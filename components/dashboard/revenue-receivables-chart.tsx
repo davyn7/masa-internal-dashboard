@@ -35,8 +35,8 @@ const chartConfig = {
 
 export function RevenueReceivablesChart() {
   const [currency, setCurrency] = useState<Currency>('USD')
-  const [month, setMonth] = useState(5)
-  const [year, setYear] = useState(2025)
+  const [month, setMonth] = useState(0)
+  const [year, setYear] = useState(2026)
 
   const data = useMemo(
     () =>

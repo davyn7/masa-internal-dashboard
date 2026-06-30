@@ -28,7 +28,9 @@ export function StartDatePicker({
         onValueChange={(v) => onMonthChange(Number(v))}
       >
         <SelectTrigger size="sm" className="w-[88px]" aria-label="Start month">
-          <SelectValue />
+          <SelectValue placeholder="Month">
+            {MONTH_OPTIONS[month]?.label}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {MONTH_OPTIONS.map((m) => (
@@ -43,7 +45,7 @@ export function StartDatePicker({
         onValueChange={(v) => onYearChange(Number(v))}
       >
         <SelectTrigger size="sm" className="w-[84px]" aria-label="Start year">
-          <SelectValue />
+          <SelectValue placeholder="Year">{year}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {YEAR_OPTIONS.map((y) => (
