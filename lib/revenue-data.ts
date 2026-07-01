@@ -20,6 +20,10 @@ export type MonthlyRevenue = {
   mrr: number
   /** Annual Recurring Revenue (USD) */
   arr: number
+  /** ARR contribution from contracts denominated in USD (USD) */
+  arrUsd: number
+  /** ARR contribution from contracts denominated in IDR, converted to USD */
+  arrIdr: number
   /** Recognized revenue billed in the month (USD) */
   revenue: number
   /** Outstanding receivables for the month (USD) */
@@ -71,13 +75,22 @@ function buildSeries(): MonthlyRevenue[] {
     const receivableRatio = 0.18 + 0.08 * Math.abs(Math.sin(i / 3))
     const receivables = revenue * receivableRatio
 
+    // IDR-denominated contracts grow from ~35% to ~60% of ARR over the series
+    // to reflect growing penetration in the Indonesian market.
+    const arr = Math.round(mrr * 12)
+    const idrShare = 0.35 + 0.25 * (i / (totalMonths - 1)) + 0.04 * Math.sin(i / 4)
+    const arrIdr = Math.round(arr * Math.min(idrShare, 0.65))
+    const arrUsd = arr - arrIdr
+
     series.push({
       key: `${year}-${String(month + 1).padStart(2, '0')}`,
       label: `${MONTH_LABELS[month]} ${year}`,
       year,
       month,
       mrr: Math.round(mrr),
-      arr: Math.round(mrr * 12),
+      arr,
+      arrUsd,
+      arrIdr,
       revenue: Math.round(revenue),
       receivables: Math.round(receivables),
     })

@@ -1,5 +1,6 @@
 import { KpiCards } from './kpi-cards'
 import { MrrArrChart } from './mrr-arr-chart'
+import { ArrCurrencyMixChart } from './arr-currency-mix-chart'
 import { RevenueReceivablesChart } from './revenue-receivables-chart'
 import { ChartPlaceholder } from './chart-placeholder'
 
@@ -13,6 +14,7 @@ export function RevenueDashboard() {
         className="grid grid-cols-1 gap-4 xl:grid-cols-2"
       >
         <MrrArrChart />
+        <ArrCurrencyMixChart />
         <RevenueReceivablesChart />
         <ChartPlaceholder
           title="Net Revenue Retention"
