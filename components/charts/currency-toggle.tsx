@@ -14,9 +14,11 @@ export function CurrencyToggle({
 }) {
   return (
     <ToggleGroup
-      type="single"
-      value={value}
-      onValueChange={(v) => v && onChange(v as Currency)}
+      value={[value]}
+      onValueChange={(values) => {
+        const next = values[0]
+        if (next) onChange(next as Currency)
+      }}
       variant="outline"
       size="sm"
       className={className}

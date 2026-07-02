@@ -33,7 +33,7 @@ export type SiteGroup = {
   totalPrevMrr: number
 }
 
-type RawClient = {
+export type ClientWeight = {
   id: string
   companyName: string
   siteId: string
@@ -44,7 +44,7 @@ type RawClient = {
   contractExpiryDate: string
 }
 
-const SITES: Array<{ siteId: string; siteName: string; mineral: Mineral }> = [
+export const SITE_CATALOG: Array<{ siteId: string; siteName: string; mineral: Mineral }> = [
   { siteId: 'sorowako', siteName: 'Sorowako', mineral: 'Nickel' },
   { siteId: 'weda-bay', siteName: 'Weda Bay', mineral: 'Nickel' },
   { siteId: 'grasberg', siteName: 'Grasberg', mineral: 'Copper' },
@@ -54,7 +54,7 @@ const SITES: Array<{ siteId: string; siteName: string; mineral: Mineral }> = [
   { siteId: 'kaltim', siteName: 'Kaltim', mineral: 'Coal' },
 ]
 
-const RAW_CLIENTS: RawClient[] = [
+export const CLIENT_WEIGHTS: ClientWeight[] = [
   { id: 'c01', companyName: 'Vale Indonesia', siteId: 'sorowako', siteName: 'Sorowako', mineral: 'Nickel', mrrWeight: 1.4, units: 38, contractExpiryDate: '2027-04-01' },
   { id: 'c02', companyName: 'IMIP', siteId: 'sorowako', siteName: 'Sorowako', mineral: 'Nickel', mrrWeight: 1.1, units: 32, contractExpiryDate: '2026-10-15' },
   { id: 'c03', companyName: 'Sorikmas', siteId: 'sorowako', siteName: 'Sorowako', mineral: 'Nickel', mrrWeight: 0.7, units: 18, contractExpiryDate: '2027-09-01' },
@@ -96,12 +96,12 @@ export function computeMonthsUntilExpiry(expiryDate: string): number {
 function buildClients(): ClientSiteRecord[] {
   const last = REVENUE_SERIES[REVENUE_SERIES.length - 1]
   const prev = REVENUE_SERIES[REVENUE_SERIES.length - 2]
-  const totalWeight = RAW_CLIENTS.reduce((sum, c) => sum + c.mrrWeight, 0)
-  const totalUnits = RAW_CLIENTS.reduce((sum, c) => sum + c.units, 0)
+  const totalWeight = CLIENT_WEIGHTS.reduce((sum, c) => sum + c.mrrWeight, 0)
+  const totalUnits = CLIENT_WEIGHTS.reduce((sum, c) => sum + c.units, 0)
   const targetMrr = last.mrr
   const targetPrevMrr = prev.mrr
 
-  const scaled = RAW_CLIENTS.map((raw) => {
+  const scaled = CLIENT_WEIGHTS.map((raw) => {
     const share = raw.mrrWeight / totalWeight
     const mrr = Math.round(targetMrr * share)
     const prevMrr = Math.round(targetPrevMrr * share)
@@ -144,7 +144,7 @@ function buildClients(): ClientSiteRecord[] {
 const CLIENTS = buildClients()
 
 export function getClientMatrixGroups(): SiteGroup[] {
-  return SITES.map((site) => {
+  return SITE_CATALOG.map((site) => {
     const clients = CLIENTS.filter((c) => c.siteId === site.siteId)
     const totalMrr = clients.reduce((sum, c) => sum + c.mrr, 0)
     const totalPrevMrr = clients.reduce((sum, c) => sum + c.prevMrr, 0)
