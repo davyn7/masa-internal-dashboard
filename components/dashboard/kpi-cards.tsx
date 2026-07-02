@@ -5,7 +5,6 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CircleDollarSign,
-  TrendingUp,
   Users,
   Truck,
 } from 'lucide-react'
@@ -22,42 +21,39 @@ import { CurrencyToggle } from './currency-toggle'
 
 const kpis = getCurrentKpis()
 
-type KpiDef = {
+type KpiDualDef = {
   label: string
   icon: LucideIcon
-  value: number
+  mrr: number
+  arr: number
   change: number
   caption: string
 }
 
-function buildKpiDefs(): KpiDef[] {
+function buildKpiDefs(): KpiDualDef[] {
   return [
     {
-      label: 'Current MRR',
+      label: 'Current MRR & ARR',
       icon: CircleDollarSign,
-      value: kpis.mrr.value,
+      mrr: kpis.mrr.value,
+      arr: kpis.arr.value,
       change: kpis.mrr.change,
-      caption: 'Monthly recurring revenue',
+      caption: 'Monthly & annualized recurring revenue',
     },
     {
-      label: 'Current ARR',
-      icon: TrendingUp,
-      value: kpis.arr.value,
-      change: kpis.arr.change,
-      caption: 'Annualized run rate',
-    },
-    {
-      label: 'MRR per Client',
+      label: 'MRR & ARR per Client',
       icon: Users,
-      value: kpis.revenuePerClient.value,
-      change: kpis.revenuePerClient.change,
-      caption: 'Across 26 active clients',
+      mrr: kpis.perClient.mrr,
+      arr: kpis.perClient.arr,
+      change: kpis.perClient.change,
+      caption: `Across 26 active clients`,
     },
     {
-      label: 'MRR per Unit',
+      label: 'MRR & ARR per Unit',
       icon: Truck,
-      value: kpis.revenuePerUnit.value,
-      change: kpis.revenuePerUnit.change,
+      mrr: kpis.perUnit.mrr,
+      arr: kpis.perUnit.arr,
+      change: kpis.perUnit.change,
       caption: 'Across 512 monitored units',
     },
   ]
@@ -82,7 +78,13 @@ function ChangeBadge({ change }: { change: number }) {
   )
 }
 
-function KpiCard({ def, currency }: { def: KpiDef; currency: Currency }) {
+function DualKpiCard({
+  def,
+  currency,
+}: {
+  def: KpiDualDef
+  currency: Currency
+}) {
   const Icon = def.icon
   return (
     <Card className="relative overflow-hidden border-border/60 bg-card/80 transition-colors hover:border-primary/40">
@@ -98,10 +100,30 @@ function KpiCard({ def, currency }: { def: KpiDef; currency: Currency }) {
           <Icon className="size-4" aria-hidden="true" />
         </span>
       </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        <div className="font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">
-          {formatCompact(def.value, currency)}
+      <CardContent className="flex flex-col gap-3">
+        {/* MRR row */}
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+              MRR
+            </span>
+            <span className="font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">
+              {formatCompact(def.mrr, currency)}
+            </span>
+          </div>
+          {/* Divider */}
+          <div className="h-10 w-px self-center bg-border/50" aria-hidden="true" />
+          {/* ARR row */}
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+              ARR
+            </span>
+            <span className="font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">
+              {formatCompact(def.arr, currency)}
+            </span>
+          </div>
         </div>
+        {/* Shared change badge */}
         <div className="flex items-center gap-2">
           <ChangeBadge change={def.change} />
           <span className="text-xs text-muted-foreground">vs prev. period</span>
@@ -124,9 +146,9 @@ export function KpiCards() {
         </h2>
         <CurrencyToggle value={currency} onChange={setCurrency} />
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {defs.map((def) => (
-          <KpiCard key={def.label} def={def} currency={currency} />
+          <DualKpiCard key={def.label} def={def} currency={currency} />
         ))}
       </div>
     </section>

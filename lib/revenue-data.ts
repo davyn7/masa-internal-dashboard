@@ -166,21 +166,31 @@ export function getCurrentKpis() {
   const last = REVENUE_SERIES[REVENUE_SERIES.length - 1]
   const prev = REVENUE_SERIES[REVENUE_SERIES.length - 2]
 
-  const revenuePerClient = last.revenue / FLEET_SNAPSHOT.activeClients
-  const prevRevenuePerClient = prev.revenue / FLEET_SNAPSHOT.activeClients
-  const revenuePerUnit = last.revenue / FLEET_SNAPSHOT.monitoredUnits
-  const prevRevenuePerUnit = prev.revenue / FLEET_SNAPSHOT.monitoredUnits
+  const mrrPerClient = last.mrr / FLEET_SNAPSHOT.activeClients
+  const prevMrrPerClient = prev.mrr / FLEET_SNAPSHOT.activeClients
+  const arrPerClient = last.arr / FLEET_SNAPSHOT.activeClients
+  const prevArrPerClient = prev.arr / FLEET_SNAPSHOT.activeClients
+
+  const mrrPerUnit = last.mrr / FLEET_SNAPSHOT.monitoredUnits
+  const prevMrrPerUnit = prev.mrr / FLEET_SNAPSHOT.monitoredUnits
+  const arrPerUnit = last.arr / FLEET_SNAPSHOT.monitoredUnits
+  const prevArrPerUnit = prev.arr / FLEET_SNAPSHOT.monitoredUnits
+
+  // MRR and ARR always share the same % change (ARR = MRR * 12)
+  const mrrArrChange = percentChange(last.mrr, prev.mrr)
 
   return {
-    mrr: { value: last.mrr, change: percentChange(last.mrr, prev.mrr) },
-    arr: { value: last.arr, change: percentChange(last.arr, prev.arr) },
-    revenuePerClient: {
-      value: revenuePerClient,
-      change: percentChange(revenuePerClient, prevRevenuePerClient),
+    mrr: { value: last.mrr, change: mrrArrChange },
+    arr: { value: last.arr, change: mrrArrChange },
+    perClient: {
+      mrr: mrrPerClient,
+      arr: arrPerClient,
+      change: percentChange(mrrPerClient, prevMrrPerClient),
     },
-    revenuePerUnit: {
-      value: revenuePerUnit,
-      change: percentChange(revenuePerUnit, prevRevenuePerUnit),
+    perUnit: {
+      mrr: mrrPerUnit,
+      arr: arrPerUnit,
+      change: percentChange(mrrPerUnit, prevMrrPerUnit),
     },
   }
 }
