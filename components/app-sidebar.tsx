@@ -37,9 +37,13 @@ type NavItem = {
   href: string
 }
 
-const analyticsNav: NavItem[] = [
+const financeNav: NavItem[] = [
   { title: 'MRR & ARR', icon: BarChart3, href: '/' },
   { title: 'Unit Economics', icon: LayoutDashboard, href: '/unit-economics' },
+  { title: 'Accounts', icon: LandmarkIcon, href: '/accounts' },
+]
+
+const analyticsNav: NavItem[] = [
   { title: 'Fleet Overview', icon: LayoutDashboard, href: '/fleet-overview' },
   { title: 'Efficiency', icon: Gauge, href: '/efficiency' },
   { title: 'Utilization', icon: Activity, href: '/utilization' },
@@ -50,10 +54,6 @@ const operationsNav: NavItem[] = [
   { title: 'Fuel & Energy', icon: Fuel, href: '/fuel-energy' },
   { title: 'Maintenance', icon: Wrench, href: '/maintenance' },
   { title: 'Alerts', icon: Bell, href: '/alerts' },
-]
-
-const financeNav: NavItem[] = [
-  { title: 'Accounts', icon: LandmarkIcon, href: '/accounts' },
 ]
 
 const systemNav: NavItem[] = [
@@ -111,9 +111,9 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
+        <NavSection label="Finance" items={financeNav} />
         <NavSection label="Analytics" items={analyticsNav} />
         <NavSection label="Operations" items={operationsNav} />
-        <NavSection label="Finance" items={financeNav} />
         <NavSection label="System" items={systemNav} />
       </SidebarContent>
       <SidebarFooter>
