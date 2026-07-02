@@ -47,14 +47,14 @@ function buildKpiDefs(): KpiDef[] {
       caption: 'Annualized run rate',
     },
     {
-      label: 'Revenue per Client',
+      label: 'MRR per Client',
       icon: Users,
       value: kpis.revenuePerClient.value,
       change: kpis.revenuePerClient.change,
       caption: 'Across 26 active clients',
     },
     {
-      label: 'Revenue per Unit',
+      label: 'MRR per Unit',
       icon: Truck,
       value: kpis.revenuePerUnit.value,
       change: kpis.revenuePerUnit.change,
