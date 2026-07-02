@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import {
   Activity,
   BarChart3,
@@ -31,43 +33,56 @@ import {
 type NavItem = {
   title: string
   icon: LucideIcon
-  active?: boolean
+  href: string
 }
 
 const analyticsNav: NavItem[] = [
-  { title: 'MRR & ARR', icon: BarChart3, active: true },
-  { title: 'Unit Economics', icon: LayoutDashboard },
-  { title: 'Fleet Overview', icon: LayoutDashboard },
-  { title: 'Efficiency', icon: Gauge },
-  { title: 'Utilization', icon: Activity },
+  { title: 'MRR & ARR', icon: BarChart3, href: '/' },
+  { title: 'Unit Economics', icon: LayoutDashboard, href: '/unit-economics' },
+  { title: 'Fleet Overview', icon: LayoutDashboard, href: '/fleet-overview' },
+  { title: 'Efficiency', icon: Gauge, href: '/efficiency' },
+  { title: 'Utilization', icon: Activity, href: '/utilization' },
 ]
 
 const operationsNav: NavItem[] = [
-  { title: 'Vehicles', icon: Truck },
-  { title: 'Fuel & Energy', icon: Fuel },
-  { title: 'Maintenance', icon: Wrench },
-  { title: 'Alerts', icon: Bell },
+  { title: 'Vehicles', icon: Truck, href: '/vehicles' },
+  { title: 'Fuel & Energy', icon: Fuel, href: '/fuel-energy' },
+  { title: 'Maintenance', icon: Wrench, href: '/maintenance' },
+  { title: 'Alerts', icon: Bell, href: '/alerts' },
 ]
 
 const systemNav: NavItem[] = [
-  { title: 'Reports', icon: FileText },
-  { title: 'Settings', icon: Settings },
+  { title: 'Reports', icon: FileText, href: '/reports' },
+  { title: 'Settings', icon: Settings, href: '/settings' },
 ]
 
 function NavSection({ label, items }: { label: string; items: NavItem[] }) {
+  const pathname = usePathname()
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{label}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
-          {items.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton isActive={item.active} tooltip={item.title}>
-                <item.icon />
-                <span>{item.title}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+          {items.map((item) => {
+            const isActive =
+              pathname === item.href ||
+              (pathname === '/' && item.href === '/')
+            return (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive}
+                  tooltip={item.title}
+                >
+                  <Link href={item.href}>
+                    <item.icon />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
