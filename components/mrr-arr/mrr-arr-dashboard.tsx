@@ -1,6 +1,7 @@
 import { KpiCards } from './kpi-cards'
 import { MrrArrChart } from './mrr-arr-chart'
 import { ArrCurrencyMixChart } from './arr-currency-mix-chart'
+import { ClientMatrixHeatmap } from './client-matrix-heatmap'
 import { ChartPlaceholder } from './chart-placeholder'
 
 export function MrrArrDashboard() {
@@ -18,10 +19,7 @@ export function MrrArrDashboard() {
           title="Net Revenue Retention"
           hint="Reserved for an upcoming NRR cohort visualization."
         />
-        <ChartPlaceholder
-          title="Revenue by Vehicle Type"
-          hint="Reserved for a breakdown across dump trucks, excavators, and more."
-        />
+        <ClientMatrixHeatmap />
       </section>
     </div>
   )
