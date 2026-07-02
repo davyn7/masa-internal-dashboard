@@ -5,9 +5,9 @@ import { BANK_ACCOUNTS, type BankAccount } from '@/lib/accounts-data'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
 const BANK_ACCENT: Record<string, string> = {
-  BCA:       'var(--chart-1)',   // cyan
-  'Hana Bank': 'var(--chart-2)', // amber
-  DBS:       'var(--chart-3)',   // blue
+  BCA:       'var(--chart-3)',   // blue (was DBS)
+  'Hana Bank': 'var(--chart-1)', // cyan (was BCA)
+  DBS:       '#ef4444',          // red
 }
 
 function formatAmount(amount: number, currency: 'IDR' | 'USD'): string {
