@@ -35,7 +35,8 @@ type NavItem = {
 }
 
 const analyticsNav: NavItem[] = [
-  { title: 'Revenue', icon: BarChart3, active: true },
+  { title: 'MRR & ARR', icon: BarChart3, active: true },
+  { title: 'Unit Economics', icon: LayoutDashboard },
   { title: 'Fleet Overview', icon: LayoutDashboard },
   { title: 'Efficiency', icon: Gauge },
   { title: 'Utilization', icon: Activity },
