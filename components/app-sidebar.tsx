@@ -65,21 +65,19 @@ function NavSection({ label, items }: { label: string; items: NavItem[] }) {
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
-            const isActive =
-              pathname === item.href ||
-              (pathname === '/' && item.href === '/')
+            const isActive = pathname === item.href
             return (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isActive}
-                  tooltip={item.title}
-                >
-                  <Link href={item.href}>
+                <Link href={item.href} className="flex w-full">
+                  <SidebarMenuButton
+                    isActive={isActive}
+                    tooltip={item.title}
+                    className="w-full"
+                  >
                     <item.icon />
                     <span>{item.title}</span>
-                  </Link>
-                </SidebarMenuButton>
+                  </SidebarMenuButton>
+                </Link>
               </SidebarMenuItem>
             )
           })}
