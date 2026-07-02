@@ -28,7 +28,15 @@ export type MonthlyRevenue = {
   revenue: number
   /** Outstanding receivables for the month (USD) */
   receivables: number
+  /** True when this month is after the current real-world month */
+  isProjected: boolean
 }
+
+/**
+ * The current "live" month — July 2026.
+ * Any data point after this is considered projected.
+ */
+export const TODAY = { year: 2026, month: 6 } // 0-indexed month
 
 const MONTH_LABELS = [
   'Jan',
@@ -82,6 +90,9 @@ function buildSeries(): MonthlyRevenue[] {
     const arrIdr = Math.round(arr * Math.min(idrShare, 0.65))
     const arrUsd = arr - arrIdr
 
+    const isProjected =
+      year > TODAY.year || (year === TODAY.year && month > TODAY.month)
+
     series.push({
       key: `${year}-${String(month + 1).padStart(2, '0')}`,
       label: `${MONTH_LABELS[month]} ${year}`,
@@ -93,6 +104,7 @@ function buildSeries(): MonthlyRevenue[] {
       arrIdr,
       revenue: Math.round(revenue),
       receivables: Math.round(receivables),
+      isProjected,
     })
   }
 
@@ -177,4 +189,17 @@ export function filterFromStart(year: number, month: number): MonthlyRevenue[] {
   return REVENUE_SERIES.filter(
     (d) => d.year > year || (d.year === year && d.month >= month),
   )
+}
+
+export function filterRange(
+  fromYear: number,
+  fromMonth: number,
+  toYear: number,
+  toMonth: number,
+): MonthlyRevenue[] {
+  return REVENUE_SERIES.filter((d) => {
+    const afterFrom = d.year > fromYear || (d.year === fromYear && d.month >= fromMonth)
+    const beforeTo = d.year < toYear || (d.year === toYear && d.month <= toMonth)
+    return afterFrom && beforeTo
+  })
 }
