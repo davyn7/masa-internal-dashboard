@@ -10,6 +10,9 @@ import {
   YAxis,
 } from 'recharts'
 
+import { ChartShell } from '@/components/charts/chart-shell'
+import { CurrencyToggle } from '@/components/charts/currency-toggle'
+import { StartDatePicker } from '@/components/charts/start-date-picker'
 import {
   ChartContainer,
   ChartLegend,
@@ -20,13 +23,10 @@ import {
 } from '@/components/ui/chart'
 import {
   type Currency,
-  filterFromStart,
   formatCompact,
   formatFull,
-} from '@/lib/revenue-data'
-import { ChartShell } from './chart-shell'
-import { CurrencyToggle } from './currency-toggle'
-import { StartDatePicker } from './start-date-picker'
+} from '@/lib/finance/shared'
+import { filterFromStart } from '@/lib/finance/unit-economics'
 
 const chartConfig = {
   revenue: { label: 'Revenue', color: 'var(--chart-1)' },

@@ -1,7 +1,7 @@
 'use client'
 
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import type { Currency } from '@/lib/revenue-data'
+import type { Currency } from '@/lib/finance/shared'
 
 export function CurrencyToggle({
   value,

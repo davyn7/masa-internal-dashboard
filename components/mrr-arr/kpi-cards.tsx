@@ -10,14 +10,11 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
+import { CurrencyToggle } from '@/components/charts/currency-toggle'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import {
-  type Currency,
-  formatCompact,
-  getCurrentKpis,
-} from '@/lib/revenue-data'
-import { CurrencyToggle } from './currency-toggle'
+import { getCurrentKpis } from '@/lib/finance/mrr-arr'
+import { type Currency, formatCompact } from '@/lib/finance/shared'
 
 const kpis = getCurrentKpis()
 

@@ -11,21 +11,21 @@ import {
   type TooltipProps,
 } from 'recharts'
 
+import { ChartShell } from '@/components/charts/chart-shell'
+import { DateRangePicker } from '@/components/charts/date-range-picker'
 import {
   ChartContainer,
   ChartLegend,
   ChartLegendContent,
   type ChartConfig,
 } from '@/components/ui/chart'
+import { filterRange } from '@/lib/finance/mrr-arr'
 import {
-  filterRange,
   formatCompact,
   formatFull,
   type MonthlyRevenue,
   TODAY,
-} from '@/lib/revenue-data'
-import { ChartShell } from './chart-shell'
-import { DateRangePicker } from './date-range-picker'
+} from '@/lib/finance/shared'
 
 const chartConfig = {
   arrIdr: { label: 'ARR — IDR contracts (USD)', color: 'var(--chart-3)' },

@@ -11,18 +11,18 @@ import {
   Tooltip,
 } from 'recharts'
 
+import { ChartShell } from '@/components/charts/chart-shell'
+import { CurrencyToggle } from '@/components/charts/currency-toggle'
+import { DateRangePicker } from '@/components/charts/date-range-picker'
 import { ChartContainer, ChartLegend, ChartLegendContent, type ChartConfig } from '@/components/ui/chart'
+import { filterRange } from '@/lib/finance/mrr-arr'
 import {
   type Currency,
   type MonthlyRevenue,
-  filterRange,
   formatCompact,
   formatFull,
   TODAY,
-} from '@/lib/revenue-data'
-import { ChartShell } from './chart-shell'
-import { CurrencyToggle } from './currency-toggle'
-import { DateRangePicker } from './date-range-picker'
+} from '@/lib/finance/shared'
 
 const chartConfig = {
   mrr: { label: 'MRR', color: 'var(--chart-1)' },

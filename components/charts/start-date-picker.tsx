@@ -7,7 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { MONTH_OPTIONS, YEAR_OPTIONS } from '@/lib/revenue-data'
+import { MONTH_OPTIONS, YEAR_OPTIONS } from '@/lib/finance/shared'
 
 export function StartDatePicker({
   month,

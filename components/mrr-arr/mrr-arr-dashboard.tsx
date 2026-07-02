@@ -3,7 +3,7 @@ import { MrrArrChart } from './mrr-arr-chart'
 import { ArrCurrencyMixChart } from './arr-currency-mix-chart'
 import { ChartPlaceholder } from './chart-placeholder'
 
-export function RevenueDashboard() {
+export function MrrArrDashboard() {
   return (
     <div className="flex flex-col gap-6">
       <KpiCards />

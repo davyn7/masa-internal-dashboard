@@ -3,17 +3,10 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Activity,
   BarChart3,
-  Bell,
-  FileText,
-  Fuel,
   Gauge,
-  LayoutDashboard,
   LandmarkIcon,
-  Settings,
-  Truck,
-  Wrench,
+  LineChart,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -39,26 +32,8 @@ type NavItem = {
 
 const financeNav: NavItem[] = [
   { title: 'MRR & ARR', icon: BarChart3, href: '/' },
-  { title: 'Unit Economics', icon: LayoutDashboard, href: '/unit-economics' },
+  { title: 'Unit Economics', icon: LineChart, href: '/unit-economics' },
   { title: 'Accounts', icon: LandmarkIcon, href: '/accounts' },
-]
-
-const analyticsNav: NavItem[] = [
-  { title: 'Fleet Overview', icon: LayoutDashboard, href: '/fleet-overview' },
-  { title: 'Efficiency', icon: Gauge, href: '/efficiency' },
-  { title: 'Utilization', icon: Activity, href: '/utilization' },
-]
-
-const operationsNav: NavItem[] = [
-  { title: 'Vehicles', icon: Truck, href: '/vehicles' },
-  { title: 'Fuel & Energy', icon: Fuel, href: '/fuel-energy' },
-  { title: 'Maintenance', icon: Wrench, href: '/maintenance' },
-  { title: 'Alerts', icon: Bell, href: '/alerts' },
-]
-
-const systemNav: NavItem[] = [
-  { title: 'Reports', icon: FileText, href: '/reports' },
-  { title: 'Settings', icon: Settings, href: '/settings' },
 ]
 
 function NavSection({ label, items }: { label: string; items: NavItem[] }) {
@@ -112,9 +87,6 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <NavSection label="Finance" items={financeNav} />
-        <NavSection label="Analytics" items={analyticsNav} />
-        <NavSection label="Operations" items={operationsNav} />
-        <NavSection label="System" items={systemNav} />
       </SidebarContent>
       <SidebarFooter>
         <div className="flex items-center gap-2.5 rounded-md px-1 py-1.5 group-data-[collapsible=icon]:justify-center">
