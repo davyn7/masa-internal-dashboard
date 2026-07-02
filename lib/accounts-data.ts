@@ -192,3 +192,53 @@ export const EXTERNAL_TRANSACTIONS: ExternalTransaction[] = [
     description: 'Monthly subscription payment',
   },
 ]
+
+export const FX_RATE = 16_250 // IDR per USD
+
+export type LiquidAssets = {
+  totalCashBalanceIdr: number
+  totalCashBalanceUsd: number
+  totalFixedDepositIdr: number
+  totalFixedDepositUsd: number
+  totalInUsd: number
+}
+
+export function calculateLiquidAssets(): LiquidAssets {
+  let totalCashBalanceIdr = 0
+  let totalCashBalanceUsd = 0
+  let totalFixedDepositIdr = 0
+  let totalFixedDepositUsd = 0
+
+  BANK_ACCOUNTS.forEach((account) => {
+    account.balances.forEach((balance) => {
+      if (balance.label === 'Cash Balance') {
+        if (account.currency === 'IDR') {
+          totalCashBalanceIdr += balance.amount
+        } else {
+          totalCashBalanceUsd += balance.amount
+        }
+      } else if (balance.label === 'Fixed Deposit') {
+        if (account.currency === 'IDR') {
+          totalFixedDepositIdr += balance.amount
+        } else {
+          totalFixedDepositUsd += balance.amount
+        }
+      }
+    })
+  })
+
+  // Convert all to USD for the total
+  const totalInUsd =
+    totalCashBalanceIdr / FX_RATE +
+    totalCashBalanceUsd +
+    totalFixedDepositIdr / FX_RATE +
+    totalFixedDepositUsd
+
+  return {
+    totalCashBalanceIdr,
+    totalCashBalanceUsd,
+    totalFixedDepositIdr,
+    totalFixedDepositUsd,
+    totalInUsd,
+  }
+}

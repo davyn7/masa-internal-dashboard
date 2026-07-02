@@ -3,6 +3,7 @@
 import { Landmark } from 'lucide-react'
 import { BANK_ACCOUNTS, type BankAccount } from '@/lib/accounts-data'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { LiquidAssetsCard } from './liquid-assets-card'
 
 const BANK_ACCENT: Record<string, string> = {
   BCA:       'var(--chart-3)',   // blue (was DBS)
@@ -117,7 +118,8 @@ function AccountCard({ account }: { account: BankAccount }) {
 
 export function AccountCards() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <LiquidAssetsCard />
       {BANK_ACCOUNTS.map((account) => (
         <AccountCard key={account.id} account={account} />
       ))}
