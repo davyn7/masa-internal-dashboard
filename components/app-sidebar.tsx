@@ -10,6 +10,7 @@ import {
   Fuel,
   Gauge,
   LayoutDashboard,
+  LandmarkIcon,
   Settings,
   Truck,
   Wrench,
@@ -49,6 +50,10 @@ const operationsNav: NavItem[] = [
   { title: 'Fuel & Energy', icon: Fuel, href: '/fuel-energy' },
   { title: 'Maintenance', icon: Wrench, href: '/maintenance' },
   { title: 'Alerts', icon: Bell, href: '/alerts' },
+]
+
+const financeNav: NavItem[] = [
+  { title: 'Accounts', icon: LandmarkIcon, href: '/accounts' },
 ]
 
 const systemNav: NavItem[] = [
@@ -108,6 +113,7 @@ export function AppSidebar() {
       <SidebarContent>
         <NavSection label="Analytics" items={analyticsNav} />
         <NavSection label="Operations" items={operationsNav} />
+        <NavSection label="Finance" items={financeNav} />
         <NavSection label="System" items={systemNav} />
       </SidebarContent>
       <SidebarFooter>
