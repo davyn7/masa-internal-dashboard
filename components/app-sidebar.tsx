@@ -4,9 +4,12 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   BarChart3,
+  Briefcase,
+  FileText,
   Gauge,
   LandmarkIcon,
   LineChart,
+  Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -34,6 +37,15 @@ const financeNav: NavItem[] = [
   { title: 'MRR & ARR', icon: BarChart3, href: '/' },
   { title: 'Unit Economics', icon: LineChart, href: '/unit-economics' },
   { title: 'Accounts', icon: LandmarkIcon, href: '/accounts' },
+]
+
+const customersNav: NavItem[] = [
+  { title: 'Overview', icon: Users, href: '/customers' },
+  { title: 'Contracts', icon: FileText, href: '/customers/contracts' },
+]
+
+const assetsNav: NavItem[] = [
+  { title: 'Assignments', icon: Briefcase, href: '/assets/assignments' },
 ]
 
 function NavSection({ label, items }: { label: string; items: NavItem[] }) {
@@ -87,6 +99,8 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <NavSection label="Finance" items={financeNav} />
+        <NavSection label="Customers" items={customersNav} />
+        <NavSection label="Assets" items={assetsNav} />
       </SidebarContent>
       <SidebarFooter>
         <div className="flex items-center gap-2.5 rounded-md px-1 py-1.5 group-data-[collapsible=icon]:justify-center">
