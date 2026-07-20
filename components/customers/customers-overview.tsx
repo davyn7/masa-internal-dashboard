@@ -1,15 +1,19 @@
-import { getCustomerSiteOverview } from '@/lib/customers/sites'
+import {
+  getCustomerOverviewRows,
+  getCustomerSiteOverview,
+} from '@/lib/customers/sites'
 
+import { CustomersTable } from './customers-table'
 import { IndonesiaSiteMapLoader } from './indonesia-site-map-loader'
-import { SitesTable } from './sites-table'
 
 export function CustomersOverview() {
   const sites = getCustomerSiteOverview()
+  const customers = getCustomerOverviewRows()
 
   return (
     <div className="flex flex-col gap-6">
       <IndonesiaSiteMapLoader sites={sites} />
-      <SitesTable sites={sites} />
+      <CustomersTable customers={customers} />
     </div>
   )
 }
