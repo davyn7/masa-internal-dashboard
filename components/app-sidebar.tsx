@@ -11,6 +11,7 @@ import {
   LandmarkIcon,
   LineChart,
   Truck,
+  UserRound,
   Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -43,6 +44,7 @@ const financeNav: NavItem[] = [
 
 const customersNav: NavItem[] = [
   { title: 'Overview', icon: Users, href: '/customers' },
+  { title: 'Individual', icon: UserRound, href: '/customers/individual' },
   { title: 'Contracts', icon: FileText, href: '/customers/contracts' },
 ]
 

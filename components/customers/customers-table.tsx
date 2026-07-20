@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 import { MineralBadge } from '@/components/customers/mineral-badge'
 import {
@@ -143,6 +144,7 @@ export function CustomersTable({
 }: {
   customers: CustomerOverviewRow[]
 }) {
+  const router = useRouter()
   const [siteFilter, setSiteFilter] = useState(ALL)
   const [materialFilter, setMaterialFilter] = useState(ALL)
   const [statusFilter, setStatusFilter] = useState(ALL)
@@ -295,7 +297,21 @@ export function CustomersTable({
               </TableRow>
             ) : (
               filtered.map((row) => (
-                <TableRow key={row.id} className="border-border/40">
+                <TableRow
+                  key={row.id}
+                  role="link"
+                  tabIndex={0}
+                  className="cursor-pointer border-border/40"
+                  onClick={() =>
+                    router.push(`/customers/individual?customer=${row.id}`)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      router.push(`/customers/individual?customer=${row.id}`)
+                    }
+                  }}
+                >
                   <TableCell className="text-xs font-medium text-foreground">
                     {row.companyName}
                   </TableCell>

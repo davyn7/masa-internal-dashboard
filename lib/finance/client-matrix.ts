@@ -161,6 +161,14 @@ export function getClientMatrixGroups(): SiteGroup[] {
   }).filter((g) => g.clients.length > 0)
 }
 
+export function getClientById(id: string): ClientSiteRecord | undefined {
+  return CLIENTS.find((c) => c.id === id)
+}
+
+export function getAllClients(): ClientSiteRecord[] {
+  return CLIENTS
+}
+
 export function formatExpiryLabel(months: number): string {
   if (months === 0) return '0 mo'
   if (months === 1) return '1 mo'
