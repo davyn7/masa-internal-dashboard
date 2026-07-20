@@ -27,9 +27,10 @@ export type MrrArrMonthlyPoint = {
   mrrTotalIdr: number
   arrTotalUsd: number
   arrTotalIdr: number
+  /** ARR from USD-denominated contracts (`arr_usd_original`) */
   arrUsdOriginal: number
-  /** IDR-denominated contracts expressed in USD */
-  arrIdrInUsd: number
+  /** ARR from IDR-denominated contracts in USD: `arr_total_usd - arr_usd_original` */
+  arrIdrContractsUsd: number
   arrUsdPercentage: number
   percentageChange: number
   isProjected: boolean
@@ -39,12 +40,24 @@ function toNumber(value: number | string): number {
   return typeof value === 'number' ? value : Number.parseFloat(value)
 }
 
+/** USD-contract ARR in USD. Falls back to MRR × 12 when the API echoes total ARR. */
+function resolveArrUsdOriginal(
+  record: MrrArrMonthlyApiRecord,
+  arrTotalUsd: number,
+): number {
+  const fromApi = toNumber(record.arr_usd_original)
+  if (fromApi < arrTotalUsd - 0.01) {
+    return fromApi
+  }
+  return toNumber(record.mrr_usd_original) * 12
+}
+
 export function mapMrrArrMonthlyRecord(
   record: MrrArrMonthlyApiRecord,
 ): MrrArrMonthlyPoint {
   const monthIndex = record.month - 1
   const arrTotalUsd = toNumber(record.arr_total_usd)
-  const arrUsdOriginal = toNumber(record.arr_usd_original)
+  const arrUsdOriginal = resolveArrUsdOriginal(record, arrTotalUsd)
 
   return {
     key: `${record.year}-${String(record.month).padStart(2, '0')}`,
@@ -56,7 +69,7 @@ export function mapMrrArrMonthlyRecord(
     arrTotalUsd,
     arrTotalIdr: toNumber(record.arr_total_idr),
     arrUsdOriginal,
-    arrIdrInUsd: arrTotalUsd - arrUsdOriginal,
+    arrIdrContractsUsd: arrTotalUsd - arrUsdOriginal,
     arrUsdPercentage: toNumber(record.arr_usd_percentage),
     percentageChange: toNumber(record.percentage_change),
     isProjected:

@@ -39,6 +39,7 @@ const chartConfig = {
 
 type MixPoint = {
   label: string
+  arrTotalUsd: number
   arrUsdPercentage: number
   arrIdrActual: number | null
   arrIdrProjected: number | null
@@ -47,7 +48,14 @@ type MixPoint = {
 }
 
 function buildChartPoints(
-  data: Array<MrrArrMonthlyPoint & { arrUsd: number; arrIdr: number }>,
+  data: Array<
+    MrrArrMonthlyPoint & {
+      /** `arr_usd_original` */
+      arrUsd: number
+      /** `arr_total_usd - arr_usd_original` */
+      arrIdr: number
+    }
+  >,
 ): MixPoint[] {
   const lastActualIdx = data.reduce(
     (acc, d, i) => (!d.isProjected ? i : acc),
@@ -61,6 +69,7 @@ function buildChartPoints(
 
     return {
       label: d.label,
+      arrTotalUsd: d.arrTotalUsd,
       arrUsdPercentage: d.arrUsdPercentage,
       arrIdrActual: actual ? d.arrIdr : null,
       arrIdrProjected: projected ? d.arrIdr : null,
@@ -121,11 +130,19 @@ function ArrTooltip({
         </span>
       </div>
 
-      <div className="border-t border-border/50 pt-2 flex items-center justify-between">
-        <span className="text-muted-foreground">USD contracts share</span>
-        <span className="font-mono font-semibold tabular-nums text-foreground">
-          {usdPct.toFixed(1)}%
-        </span>
+      <div className="border-t border-border/50 pt-2 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">Total ARR (USD)</span>
+          <span className="font-mono font-semibold tabular-nums text-foreground">
+            {formatFullNative(idrVal + usdVal, 'USD')}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground">USD contracts share</span>
+          <span className="font-mono font-semibold tabular-nums text-foreground">
+            {usdPct.toFixed(1)}%
+          </span>
+        </div>
       </div>
 
       {isProjected && (
@@ -162,7 +179,7 @@ export function ArrCurrencyMixChart() {
     const mapped = filtered.map((point) => ({
       ...point,
       arrUsd: point.arrUsdOriginal,
-      arrIdr: point.arrIdrInUsd,
+      arrIdr: point.arrTotalUsd - point.arrUsdOriginal,
     }))
     return buildChartPoints(mapped)
   }, [series, fromYear, fromMonth, toYear, toMonth])
