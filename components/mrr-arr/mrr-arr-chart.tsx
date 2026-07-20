@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   CartesianGrid,
   Line,
@@ -15,12 +15,17 @@ import { ChartShell } from '@/components/charts/chart-shell'
 import { CurrencyToggle } from '@/components/charts/currency-toggle'
 import { DateRangePicker } from '@/components/charts/date-range-picker'
 import { ChartContainer, ChartLegend, ChartLegendContent, type ChartConfig } from '@/components/ui/chart'
-import { filterRange } from '@/lib/finance/mrr-arr'
+import { useMrrArrMonthly } from '@/hooks/use-mrr-arr-monthly'
+import {
+  filterMrrArrRange,
+  getDefaultDateRange,
+  getYearOptionsFromSeries,
+  type MrrArrMonthlyPoint,
+} from '@/lib/finance/mrr-arr-monthly'
 import {
   type Currency,
-  type MonthlyRevenue,
-  formatCompact,
-  formatFull,
+  formatCompactNative,
+  formatFullNative,
   TODAY,
 } from '@/lib/finance/shared'
 
@@ -29,19 +34,15 @@ const chartConfig = {
   arr: { label: 'ARR', color: 'var(--chart-2)' },
 } satisfies ChartConfig
 
-// ---------------------------------------------------------------------------
-// Types for the split actual / projected data points
-// ---------------------------------------------------------------------------
-type ChartPoint = MonthlyRevenue & {
+type TrendPoint = {
+  label: string
   mrrActual: number | null
   mrrProjected: number | null
   arrActual: number | null
   arrProjected: number | null
 }
 
-function buildChartPoints(data: MonthlyRevenue[]): ChartPoint[] {
-  // Find the index of the last actual point so we can create a one-point
-  // overlap at the boundary (keeps the projected line visually connected).
+function buildChartPoints(data: Array<MrrArrMonthlyPoint & { mrr: number; arr: number }>): TrendPoint[] {
   const lastActualIdx = data.reduce(
     (acc, d, i) => (!d.isProjected ? i : acc),
     -1,
@@ -53,7 +54,7 @@ function buildChartPoints(data: MonthlyRevenue[]): ChartPoint[] {
     const projected = d.isProjected || isAtBoundary
 
     return {
-      ...d,
+      label: d.label,
       mrrActual: actual ? d.mrr : null,
       mrrProjected: projected ? d.mrr : null,
       arrActual: actual ? d.arr : null,
@@ -62,9 +63,6 @@ function buildChartPoints(data: MonthlyRevenue[]): ChartPoint[] {
   })
 }
 
-// ---------------------------------------------------------------------------
-// Custom tooltip
-// ---------------------------------------------------------------------------
 function MrrArrTooltip({
   active,
   payload,
@@ -73,7 +71,6 @@ function MrrArrTooltip({
 }: TooltipProps<number, string> & { currency: Currency }) {
   if (!active || !payload?.length) return null
 
-  // Prefer actual values; fall back to projected
   const mrrVal =
     (payload.find((p) => p.dataKey === 'mrrActual')?.value ??
       payload.find((p) => p.dataKey === 'mrrProjected')?.value ??
@@ -99,7 +96,7 @@ function MrrArrTooltip({
           <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: 'var(--chart-1)' }} />
           <span className="text-muted-foreground flex-1">MRR</span>
           <span className="ml-4 font-mono font-medium tabular-nums text-foreground">
-            {formatFull(mrrVal, currency)}
+            {formatFullNative(mrrVal, currency)}
           </span>
         </div>
       )}
@@ -108,7 +105,7 @@ function MrrArrTooltip({
           <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: 'var(--chart-2)' }} />
           <span className="text-muted-foreground flex-1">ARR</span>
           <span className="ml-4 font-mono font-medium tabular-nums text-foreground">
-            {formatFull(arrVal, currency)}
+            {formatFullNative(arrVal, currency)}
           </span>
         </div>
       )}
@@ -121,20 +118,36 @@ function MrrArrTooltip({
   )
 }
 
-// ---------------------------------------------------------------------------
-// Chart
-// ---------------------------------------------------------------------------
 export function MrrArrChart() {
+  const { data: series, loading, error } = useMrrArrMonthly()
   const [currency, setCurrency] = useState<Currency>('USD')
   const [fromMonth, setFromMonth] = useState(0)
   const [fromYear, setFromYear] = useState(2024)
   const [toMonth, setToMonth] = useState(TODAY.month)
-  const [toYear, setToYear] = useState(TODAY.year + 1) // show a bit of projection by default
+  const [toYear, setToYear] = useState(TODAY.year)
+  const [rangeInitialized, setRangeInitialized] = useState(false)
 
-  const data = useMemo<ChartPoint[]>(
-    () => buildChartPoints(filterRange(fromYear, fromMonth, toYear, toMonth)),
-    [fromYear, fromMonth, toYear, toMonth],
-  )
+  useEffect(() => {
+    if (!series.length || rangeInitialized) return
+    const defaults = getDefaultDateRange(series)
+    setFromYear(defaults.fromYear)
+    setFromMonth(defaults.fromMonth)
+    setToYear(defaults.toYear)
+    setToMonth(defaults.toMonth)
+    setRangeInitialized(true)
+  }, [series, rangeInitialized])
+
+  const yearOptions = useMemo(() => getYearOptionsFromSeries(series), [series])
+
+  const data = useMemo<TrendPoint[]>(() => {
+    const filtered = filterMrrArrRange(series, fromYear, fromMonth, toYear, toMonth)
+    const mapped = filtered.map((point) => ({
+      ...point,
+      mrr: currency === 'USD' ? point.mrrTotalUsd : point.mrrTotalIdr,
+      arr: currency === 'USD' ? point.arrTotalUsd : point.arrTotalIdr,
+    }))
+    return buildChartPoints(mapped)
+  }, [series, fromYear, fromMonth, toYear, toMonth, currency])
 
   return (
     <ChartShell
@@ -151,110 +164,117 @@ export function MrrArrChart() {
             onFromYearChange={setFromYear}
             onToMonthChange={setToMonth}
             onToYearChange={setToYear}
+            yearOptions={yearOptions}
           />
           <CurrencyToggle value={currency} onChange={setCurrency} />
         </div>
       }
     >
-      <ChartContainer config={chartConfig} className="h-[300px] w-full">
-        <LineChart data={data} margin={{ left: 4, right: 4, top: 8 }}>
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
-          <XAxis
-            dataKey="label"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            minTickGap={24}
-            tickFormatter={(value: string) => value.replace(' 20', " '")}
-          />
-          <YAxis
-            yAxisId="mrr"
-            orientation="left"
-            tickLine={false}
-            axisLine={false}
-            width={56}
-            tickFormatter={(value: number) => formatCompact(value, currency)}
-          />
-          <YAxis
-            yAxisId="arr"
-            orientation="right"
-            tickLine={false}
-            axisLine={false}
-            width={56}
-            tickFormatter={(value: number) => formatCompact(value, currency)}
-          />
-          <Tooltip
-            content={<MrrArrTooltip currency={currency} />}
-            cursor={{ stroke: 'var(--border)', strokeWidth: 1, strokeDasharray: '4 3' }}
-          />
-          <ChartLegend
-            content={<ChartLegendContent />}
-            payload={[
-              { value: 'MRR', type: 'line', color: 'var(--chart-1)' },
-              { value: 'ARR', type: 'line', color: 'var(--chart-2)' },
-            ]}
-          />
+      {loading ? (
+        <p className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+          Loading chart data…
+        </p>
+      ) : error ? (
+        <p className="flex h-[300px] items-center justify-center text-sm text-destructive">
+          {error}
+        </p>
+      ) : (
+        <ChartContainer config={chartConfig} className="h-[300px] w-full">
+          <LineChart data={data} margin={{ left: 4, right: 4, top: 8 }}>
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              minTickGap={24}
+              tickFormatter={(value: string) => value.replace(' 20', " '")}
+            />
+            <YAxis
+              yAxisId="mrr"
+              orientation="left"
+              tickLine={false}
+              axisLine={false}
+              width={56}
+              tickFormatter={(value: number) => formatCompactNative(value, currency)}
+            />
+            <YAxis
+              yAxisId="arr"
+              orientation="right"
+              tickLine={false}
+              axisLine={false}
+              width={56}
+              tickFormatter={(value: number) => formatCompactNative(value, currency)}
+            />
+            <Tooltip
+              content={<MrrArrTooltip currency={currency} />}
+              cursor={{ stroke: 'var(--border)', strokeWidth: 1, strokeDasharray: '4 3' }}
+            />
+            <ChartLegend
+              content={<ChartLegendContent />}
+              payload={[
+                { value: 'MRR', type: 'line', color: 'var(--chart-1)' },
+                { value: 'ARR', type: 'line', color: 'var(--chart-2)' },
+              ]}
+            />
 
-          {/* ---- MRR actual (solid) ---- */}
-          <Line
-            yAxisId="mrr"
-            dataKey="mrrActual"
-            name="mrr"
-            type="monotone"
-            stroke="var(--color-mrr)"
-            strokeWidth={2}
-            dot={false}
-            activeDot={{ r: 4 }}
-            connectNulls={false}
-            legendType="none"
-          />
-          {/* ---- MRR projected (muted + dashed) ---- */}
-          <Line
-            yAxisId="mrr"
-            dataKey="mrrProjected"
-            name="mrr"
-            type="monotone"
-            stroke="var(--color-mrr)"
-            strokeWidth={2}
-            strokeDasharray="5 4"
-            strokeOpacity={0.4}
-            dot={false}
-            activeDot={{ r: 4, fillOpacity: 0.4 }}
-            connectNulls={false}
-            legendType="none"
-          />
+            <Line
+              yAxisId="mrr"
+              dataKey="mrrActual"
+              name="mrr"
+              type="monotone"
+              stroke="var(--color-mrr)"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4 }}
+              connectNulls={false}
+              legendType="none"
+            />
+            <Line
+              yAxisId="mrr"
+              dataKey="mrrProjected"
+              name="mrr"
+              type="monotone"
+              stroke="var(--color-mrr)"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              strokeOpacity={0.4}
+              dot={false}
+              activeDot={{ r: 4, fillOpacity: 0.4 }}
+              connectNulls={false}
+              legendType="none"
+            />
 
-          {/* ---- ARR actual (solid) ---- */}
-          <Line
-            yAxisId="arr"
-            dataKey="arrActual"
-            name="arr"
-            type="monotone"
-            stroke="var(--color-arr)"
-            strokeWidth={2}
-            strokeDasharray="5 4"
-            dot={false}
-            activeDot={{ r: 4 }}
-            connectNulls={false}
-            legendType="none"
-          />
-          {/* ---- ARR projected (muted + dashed + more opacity reduction) ---- */}
-          <Line
-            yAxisId="arr"
-            dataKey="arrProjected"
-            name="arr"
-            type="monotone"
-            stroke="var(--color-arr)"
-            strokeWidth={2}
-            strokeDasharray="5 4"
-            strokeOpacity={0.35}
-            dot={false}
-            activeDot={{ r: 4, fillOpacity: 0.35 }}
-            connectNulls={false}
-            legendType="none"
-          />
-        </LineChart>
-      </ChartContainer>
+            <Line
+              yAxisId="arr"
+              dataKey="arrActual"
+              name="arr"
+              type="monotone"
+              stroke="var(--color-arr)"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              dot={false}
+              activeDot={{ r: 4 }}
+              connectNulls={false}
+              legendType="none"
+            />
+            <Line
+              yAxisId="arr"
+              dataKey="arrProjected"
+              name="arr"
+              type="monotone"
+              stroke="var(--color-arr)"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              strokeOpacity={0.35}
+              dot={false}
+              activeDot={{ r: 4, fillOpacity: 0.35 }}
+              connectNulls={false}
+              legendType="none"
+            />
+          </LineChart>
+        </ChartContainer>
+      )}
     </ChartShell>
   )
 }

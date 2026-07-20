@@ -127,6 +127,34 @@ export function convert(valueUsd: number, currency: Currency): number {
   return currency === 'IDR' ? valueUsd * USD_TO_IDR : valueUsd
 }
 
+/** Compact display for values already in the target currency. */
+export function formatCompactNative(value: number, currency: Currency): string {
+  const symbol = CURRENCY_SYMBOL[currency]
+  const abs = Math.abs(value)
+
+  const units: Array<[number, string]> = [
+    [1_000_000_000_000, 'T'],
+    [1_000_000_000, 'B'],
+    [1_000_000, 'M'],
+    [1_000, 'K'],
+  ]
+
+  for (const [divisor, suffix] of units) {
+    if (abs >= divisor) {
+      const n = value / divisor
+      const digits = Math.abs(n) >= 100 ? 0 : 1
+      return `${symbol}${n.toFixed(digits)}${suffix}`
+    }
+  }
+  return `${symbol}${Math.round(value).toLocaleString('en-US')}`
+}
+
+/** Full display for values already in the target currency. */
+export function formatFullNative(value: number, currency: Currency): string {
+  const symbol = CURRENCY_SYMBOL[currency]
+  return `${symbol}${Math.round(value).toLocaleString('en-US')}`
+}
+
 /** Compact display, e.g. $1.24M, Rp 20.1B */
 export function formatCompact(valueUsd: number, currency: Currency): string {
   const value = convert(valueUsd, currency)

@@ -9,6 +9,8 @@ import {
 } from '@/components/ui/select'
 import { MONTH_OPTIONS, YEAR_OPTIONS } from '@/lib/finance/shared'
 
+type YearOption = { label: string; value: number }
+
 interface DateRangePickerProps {
   fromMonth: number
   fromYear: number
@@ -18,6 +20,7 @@ interface DateRangePickerProps {
   onFromYearChange: (v: number) => void
   onToMonthChange: (v: number) => void
   onToYearChange: (v: number) => void
+  yearOptions?: YearOption[]
 }
 
 export function DateRangePicker({
@@ -29,6 +32,7 @@ export function DateRangePicker({
   onFromYearChange,
   onToMonthChange,
   onToYearChange,
+  yearOptions = YEAR_OPTIONS,
 }: DateRangePickerProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -59,7 +63,7 @@ export function DateRangePicker({
           <SelectValue placeholder="Year">{fromYear}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {YEAR_OPTIONS.map((y) => (
+          {yearOptions.map((y) => (
             <SelectItem key={y.value} value={String(y.value)}>
               {y.label}
             </SelectItem>
@@ -94,7 +98,7 @@ export function DateRangePicker({
           <SelectValue placeholder="Year">{toYear}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {YEAR_OPTIONS.map((y) => (
+          {yearOptions.map((y) => (
             <SelectItem key={y.value} value={String(y.value)}>
               {y.label}
             </SelectItem>

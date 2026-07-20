@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -19,11 +19,16 @@ import {
   ChartLegendContent,
   type ChartConfig,
 } from '@/components/ui/chart'
-import { filterRange } from '@/lib/finance/mrr-arr'
+import { useMrrArrMonthly } from '@/hooks/use-mrr-arr-monthly'
 import {
-  formatCompact,
-  formatFull,
-  type MonthlyRevenue,
+  filterMrrArrRange,
+  getDefaultDateRange,
+  getYearOptionsFromSeries,
+  type MrrArrMonthlyPoint,
+} from '@/lib/finance/mrr-arr-monthly'
+import {
+  formatCompactNative,
+  formatFullNative,
   TODAY,
 } from '@/lib/finance/shared'
 
@@ -32,27 +37,31 @@ const chartConfig = {
   arrUsd: { label: 'ARR — USD contracts', color: 'var(--chart-1)' },
 } satisfies ChartConfig
 
-// ---------------------------------------------------------------------------
-// Split data points: actual vs projected
-// ---------------------------------------------------------------------------
-type ChartPoint = MonthlyRevenue & {
+type MixPoint = {
+  label: string
+  arrUsdPercentage: number
   arrIdrActual: number | null
   arrIdrProjected: number | null
   arrUsdActual: number | null
   arrUsdProjected: number | null
 }
 
-function buildChartPoints(data: MonthlyRevenue[]): ChartPoint[] {
+function buildChartPoints(
+  data: Array<MrrArrMonthlyPoint & { arrUsd: number; arrIdr: number }>,
+): MixPoint[] {
   const lastActualIdx = data.reduce(
     (acc, d, i) => (!d.isProjected ? i : acc),
     -1,
   )
+
   return data.map((d, i) => {
     const isAtBoundary = i === lastActualIdx
     const actual = !d.isProjected || isAtBoundary
     const projected = d.isProjected || isAtBoundary
+
     return {
-      ...d,
+      label: d.label,
+      arrUsdPercentage: d.arrUsdPercentage,
       arrIdrActual: actual ? d.arrIdr : null,
       arrIdrProjected: projected ? d.arrIdr : null,
       arrUsdActual: actual ? d.arrUsd : null,
@@ -61,13 +70,13 @@ function buildChartPoints(data: MonthlyRevenue[]): ChartPoint[] {
   })
 }
 
-// ---------------------------------------------------------------------------
-// Custom tooltip
-// ---------------------------------------------------------------------------
-function ArrTooltip({ active, payload, label }: TooltipProps<number, string>) {
+function ArrTooltip({
+  active,
+  payload,
+  label,
+}: TooltipProps<number, string>) {
   if (!active || !payload?.length) return null
 
-  // Prefer actual values; fall back to projected
   const idrVal = (payload.find((p) => p.dataKey === 'arrIdrActual')?.value ??
     payload.find((p) => p.dataKey === 'arrIdrProjected')?.value ??
     0) as number
@@ -75,12 +84,13 @@ function ArrTooltip({ active, payload, label }: TooltipProps<number, string>) {
     payload.find((p) => p.dataKey === 'arrUsdProjected')?.value ??
     0) as number
 
+  const point = payload[0]?.payload as MixPoint | undefined
+  const usdPct = point?.arrUsdPercentage ?? 0
+
   const isProjected =
     payload.some((p) => p.dataKey === 'arrIdrProjected' && p.value != null) &&
     !payload.some((p) => p.dataKey === 'arrIdrActual' && p.value != null)
 
-  const total = idrVal + usdVal
-  const usdPct = total > 0 ? ((usdVal / total) * 100).toFixed(1) : '0.0'
   const displayLabel = isProjected ? `${label} [Projected]` : label
 
   return (
@@ -96,7 +106,7 @@ function ArrTooltip({ active, payload, label }: TooltipProps<number, string>) {
         />
         <span className="text-muted-foreground flex-1">ARR — USD contracts</span>
         <span className="ml-4 font-mono font-medium tabular-nums text-foreground">
-          {formatFull(usdVal, 'USD')}
+          {formatFullNative(usdVal, 'USD')}
         </span>
       </div>
 
@@ -107,14 +117,14 @@ function ArrTooltip({ active, payload, label }: TooltipProps<number, string>) {
         />
         <span className="text-muted-foreground flex-1">ARR — IDR contracts</span>
         <span className="ml-4 font-mono font-medium tabular-nums text-foreground">
-          {formatFull(idrVal, 'USD')}
+          {formatFullNative(idrVal, 'USD')}
         </span>
       </div>
 
       <div className="border-t border-border/50 pt-2 flex items-center justify-between">
         <span className="text-muted-foreground">USD contracts share</span>
         <span className="font-mono font-semibold tabular-nums text-foreground">
-          {usdPct}%
+          {usdPct.toFixed(1)}%
         </span>
       </div>
 
@@ -127,19 +137,35 @@ function ArrTooltip({ active, payload, label }: TooltipProps<number, string>) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Chart
-// ---------------------------------------------------------------------------
 export function ArrCurrencyMixChart() {
+  const { data: series, loading, error } = useMrrArrMonthly()
   const [fromMonth, setFromMonth] = useState(0)
   const [fromYear, setFromYear] = useState(2024)
   const [toMonth, setToMonth] = useState(TODAY.month)
-  const [toYear, setToYear] = useState(TODAY.year + 1)
+  const [toYear, setToYear] = useState(TODAY.year)
+  const [rangeInitialized, setRangeInitialized] = useState(false)
 
-  const data = useMemo<ChartPoint[]>(
-    () => buildChartPoints(filterRange(fromYear, fromMonth, toYear, toMonth)),
-    [fromYear, fromMonth, toYear, toMonth],
-  )
+  useEffect(() => {
+    if (!series.length || rangeInitialized) return
+    const defaults = getDefaultDateRange(series)
+    setFromYear(defaults.fromYear)
+    setFromMonth(defaults.fromMonth)
+    setToYear(defaults.toYear)
+    setToMonth(defaults.toMonth)
+    setRangeInitialized(true)
+  }, [series, rangeInitialized])
+
+  const yearOptions = useMemo(() => getYearOptionsFromSeries(series), [series])
+
+  const data = useMemo<MixPoint[]>(() => {
+    const filtered = filterMrrArrRange(series, fromYear, fromMonth, toYear, toMonth)
+    const mapped = filtered.map((point) => ({
+      ...point,
+      arrUsd: point.arrUsdOriginal,
+      arrIdr: point.arrIdrInUsd,
+    }))
+    return buildChartPoints(mapped)
+  }, [series, fromYear, fromMonth, toYear, toMonth])
 
   return (
     <ChartShell
@@ -155,111 +181,116 @@ export function ArrCurrencyMixChart() {
           onFromYearChange={setFromYear}
           onToMonthChange={setToMonth}
           onToYearChange={setToYear}
+          yearOptions={yearOptions}
         />
       }
     >
-      <ChartContainer config={chartConfig} className="h-[300px] w-full">
-        <AreaChart data={data} margin={{ left: 4, right: 4, top: 8 }}>
-          <defs>
-            {/* Actual fills — opaque */}
-            <linearGradient id="fillIdrActual" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--chart-3)" stopOpacity={0.35} />
-              <stop offset="95%" stopColor="var(--chart-3)" stopOpacity={0.05} />
-            </linearGradient>
-            <linearGradient id="fillUsdActual" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.45} />
-              <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.08} />
-            </linearGradient>
-            {/* Projected fills — more transparent */}
-            <linearGradient id="fillIdrProjected" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--chart-3)" stopOpacity={0.15} />
-              <stop offset="95%" stopColor="var(--chart-3)" stopOpacity={0.02} />
-            </linearGradient>
-            <linearGradient id="fillUsdProjected" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.18} />
-              <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.03} />
-            </linearGradient>
-          </defs>
+      {loading ? (
+        <p className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+          Loading chart data…
+        </p>
+      ) : error ? (
+        <p className="flex h-[300px] items-center justify-center text-sm text-destructive">
+          {error}
+        </p>
+      ) : (
+        <ChartContainer config={chartConfig} className="h-[300px] w-full">
+          <AreaChart data={data} margin={{ left: 4, right: 4, top: 8 }}>
+            <defs>
+              <linearGradient id="fillIdrActual" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--chart-3)" stopOpacity={0.35} />
+                <stop offset="95%" stopColor="var(--chart-3)" stopOpacity={0.05} />
+              </linearGradient>
+              <linearGradient id="fillUsdActual" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.45} />
+                <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.08} />
+              </linearGradient>
+              <linearGradient id="fillIdrProjected" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--chart-3)" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="var(--chart-3)" stopOpacity={0.02} />
+              </linearGradient>
+              <linearGradient id="fillUsdProjected" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.18} />
+                <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0.03} />
+              </linearGradient>
+            </defs>
 
-          <CartesianGrid vertical={false} strokeDasharray="3 3" />
+            <CartesianGrid vertical={false} strokeDasharray="3 3" />
 
-          <XAxis
-            dataKey="label"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={8}
-            minTickGap={24}
-            tickFormatter={(v: string) => v.replace(' 20', " '")}
-          />
-          <YAxis
-            tickLine={false}
-            axisLine={false}
-            width={60}
-            tickFormatter={(v: number) => formatCompact(v, 'USD')}
-          />
+            <XAxis
+              dataKey="label"
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              minTickGap={24}
+              tickFormatter={(v: string) => v.replace(' 20', " '")}
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              width={60}
+              tickFormatter={(v: number) => formatCompactNative(v, 'USD')}
+            />
 
-          <Tooltip
-            content={<ArrTooltip />}
-            cursor={{ stroke: 'var(--border)', strokeWidth: 1, strokeDasharray: '4 3' }}
-          />
+            <Tooltip
+              content={<ArrTooltip />}
+              cursor={{ stroke: 'var(--border)', strokeWidth: 1, strokeDasharray: '4 3' }}
+            />
 
-          <ChartLegend content={<ChartLegendContent />} />
+            <ChartLegend content={<ChartLegendContent />} />
 
-          {/* ---- IDR actual (bottom of stack) ---- */}
-          <Area
-            dataKey="arrIdrActual"
-            name="arrIdr"
-            type="monotone"
-            stackId="actual"
-            stroke="var(--color-arrIdr)"
-            strokeWidth={2}
-            fill="url(#fillIdrActual)"
-            connectNulls={false}
-            legendType="none"
-          />
-          {/* ---- USD actual (top of stack) ---- */}
-          <Area
-            dataKey="arrUsdActual"
-            name="arrUsd"
-            type="monotone"
-            stackId="actual"
-            stroke="var(--color-arrUsd)"
-            strokeWidth={2}
-            fill="url(#fillUsdActual)"
-            connectNulls={false}
-            legendType="none"
-          />
+            <Area
+              dataKey="arrIdrActual"
+              name="arrIdr"
+              type="monotone"
+              stackId="actual"
+              stroke="var(--color-arrIdr)"
+              strokeWidth={2}
+              fill="url(#fillIdrActual)"
+              connectNulls={false}
+              legendType="none"
+            />
+            <Area
+              dataKey="arrUsdActual"
+              name="arrUsd"
+              type="monotone"
+              stackId="actual"
+              stroke="var(--color-arrUsd)"
+              strokeWidth={2}
+              fill="url(#fillUsdActual)"
+              connectNulls={false}
+              legendType="none"
+            />
 
-          {/* ---- IDR projected (bottom of stack, muted) ---- */}
-          <Area
-            dataKey="arrIdrProjected"
-            name="arrIdr"
-            type="monotone"
-            stackId="projected"
-            stroke="var(--color-arrIdr)"
-            strokeWidth={2}
-            strokeDasharray="5 4"
-            strokeOpacity={0.4}
-            fill="url(#fillIdrProjected)"
-            connectNulls={false}
-            legendType="none"
-          />
-          {/* ---- USD projected (top of stack, muted) ---- */}
-          <Area
-            dataKey="arrUsdProjected"
-            name="arrUsd"
-            type="monotone"
-            stackId="projected"
-            stroke="var(--color-arrUsd)"
-            strokeWidth={2}
-            strokeDasharray="5 4"
-            strokeOpacity={0.4}
-            fill="url(#fillUsdProjected)"
-            connectNulls={false}
-            legendType="none"
-          />
-        </AreaChart>
-      </ChartContainer>
+            <Area
+              dataKey="arrIdrProjected"
+              name="arrIdr"
+              type="monotone"
+              stackId="projected"
+              stroke="var(--color-arrIdr)"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              strokeOpacity={0.4}
+              fill="url(#fillIdrProjected)"
+              connectNulls={false}
+              legendType="none"
+            />
+            <Area
+              dataKey="arrUsdProjected"
+              name="arrUsd"
+              type="monotone"
+              stackId="projected"
+              stroke="var(--color-arrUsd)"
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              strokeOpacity={0.4}
+              fill="url(#fillUsdProjected)"
+              connectNulls={false}
+              legendType="none"
+            />
+          </AreaChart>
+        </ChartContainer>
+      )}
     </ChartShell>
   )
 }
