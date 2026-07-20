@@ -1,0 +1,38 @@
+.indonesia-site-map {
+  background: var(--card);
+}
+
+.indonesia-site-map .leaflet-container {
+  background: var(--card);
+  font-family: inherit;
+  height: 100% !important;
+}
+
+.indonesia-site-map .leaflet-control-attribution,
+.indonesia-site-map .leaflet-control-zoom {
+  display: none;
+}
+
+.indonesia-site-map .site-map-marker-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow:
+    0 0 0 3px color-mix(in oklch, var(--primary) 30%, transparent),
+    0 0 12px color-mix(in oklch, var(--primary) 40%, transparent);
+}
+
+.indonesia-site-map .leaflet-tooltip.site-map-tooltip {
+  background: var(--card);
+  color: var(--card-foreground);
+  border: none;
+  border-radius: var(--radius-xl);
+  box-shadow: none;
+  outline: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+  padding: 0;
+}
+
+.indonesia-site-map .leaflet-tooltip.site-map-tooltip::before {
+  display: none;
+}
