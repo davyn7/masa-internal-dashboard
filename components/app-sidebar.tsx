@@ -5,10 +5,12 @@ import { usePathname } from 'next/navigation'
 import {
   BarChart3,
   Briefcase,
+  Cpu,
   FileText,
   Gauge,
   LandmarkIcon,
   LineChart,
+  Truck,
   Users,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -46,6 +48,8 @@ const customersNav: NavItem[] = [
 
 const assetsNav: NavItem[] = [
   { title: 'Assignments', icon: Briefcase, href: '/assets/assignments' },
+  { title: 'Equipment', icon: Truck, href: '/assets/equipment' },
+  { title: 'IoT Devices', icon: Cpu, href: '/assets/iot-devices' },
 ]
 
 function NavSection({ label, items }: { label: string; items: NavItem[] }) {
