@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type {
   CustomerIndividualDetail,
   CustomerOption,
@@ -91,15 +92,15 @@ export function CustomerIndividualView({
       ) : (
         <>
           <Card className="border-border/60 bg-card/80">
-            <CardContent className="flex flex-col gap-4 py-5">
-              <div className="flex flex-wrap items-center gap-2">
+            <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-3 py-4">
+              <div className="flex shrink-0 items-center gap-2">
                 <h2 className="text-xl font-semibold tracking-tight text-foreground">
                   {customer.companyName}
                 </h2>
                 <MineralBadge mineral={customer.mineral} />
               </div>
-              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="flex flex-col gap-0.5">
+              <dl className="flex min-w-0 flex-1 flex-wrap items-center gap-x-6 gap-y-2">
+                <div className="flex items-baseline gap-1.5">
                   <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
                     Site
                   </dt>
@@ -107,19 +108,19 @@ export function CustomerIndividualView({
                     {customer.siteName}
                   </dd>
                 </div>
-                <div className="flex flex-col gap-0.5">
+                <div className="flex items-baseline gap-1.5">
                   <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
                     Province
                   </dt>
                   <dd className="text-sm text-foreground">{customer.province}</dd>
                 </div>
-                <div className="flex flex-col gap-0.5">
+                <div className="flex items-baseline gap-1.5">
                   <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
                     City
                   </dt>
                   <dd className="text-sm text-foreground">{customer.city}</dd>
                 </div>
-                <div className="flex flex-col gap-0.5">
+                <div className="flex items-baseline gap-1.5">
                   <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
                     Material
                   </dt>
@@ -129,8 +130,25 @@ export function CustomerIndividualView({
             </CardContent>
           </Card>
 
-          <CustomerEquipmentCard equipment={customer.equipment} />
-          <CustomerFinancialMetrics customer={customer} />
+          <Tabs defaultValue="financial-metrics">
+            <TabsList>
+              <TabsTrigger value="financial-metrics" className="px-3">
+                Financial Metrics
+              </TabsTrigger>
+              <TabsTrigger value="equipment" className="px-3">
+                Equipment
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="financial-metrics" className="pt-2">
+              <CustomerFinancialMetrics customer={customer} />
+            </TabsContent>
+            <TabsContent value="equipment" className="pt-2">
+              <CustomerEquipmentCard
+                key={customer.id}
+                equipmentUnits={customer.equipmentUnits}
+              />
+            </TabsContent>
+          </Tabs>
         </>
       )}
     </div>

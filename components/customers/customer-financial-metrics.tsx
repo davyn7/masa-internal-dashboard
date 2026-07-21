@@ -302,9 +302,6 @@ export function CustomerFinancialMetrics({
 
   return (
     <section aria-label="Financial metrics" className="flex flex-col gap-4">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-        Financial Metrics
-      </h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <MetricCard label="Revenue" icon={CircleDollarSign}>
           <div className="flex flex-col gap-4">

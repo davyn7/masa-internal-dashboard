@@ -20,6 +20,17 @@ export type CustomerEquipmentCount = {
   iotInstalled: number
 }
 
+export type CustomerEquipmentUnit = {
+  id: string
+  equipmentTypeId: string
+  equipmentLabel: string
+  unitId: string
+  manufacturer: string
+  model: string
+  deviceId: string | null
+  installationDate: string | null
+}
+
 export type CustomerIndividualDetail = CustomerOverviewRow & {
   mrr: number
   potentialMrr: number
@@ -34,6 +45,7 @@ export type CustomerIndividualDetail = CustomerOverviewRow & {
   profitability: number
   profitabilityMargin: number
   equipment: CustomerEquipmentCount[]
+  equipmentUnits: CustomerEquipmentUnit[]
 }
 
 export type CustomerOption = {
@@ -91,19 +103,79 @@ function distributeUnits(
   return counts
 }
 
-function buildEquipment(
-  row: CustomerOverviewRow,
-): CustomerEquipmentCount[] {
+const EQUIPMENT_CATALOG: Record<
+  string,
+  { manufacturers: string[]; models: string[]; unitPrefix: string }
+> = {
+  dt: {
+    manufacturers: ['Caterpillar', 'Komatsu', 'Volvo'],
+    models: ['777G', 'HD785-8', 'A60H'],
+    unitPrefix: 'DT',
+  },
+  exca: {
+    manufacturers: ['Caterpillar', 'Komatsu', 'Hitachi'],
+    models: ['390F', 'PC2000-11', 'EX1900-7'],
+    unitPrefix: 'EX',
+  },
+  lv: {
+    manufacturers: ['Toyota', 'Mitsubishi', 'Isuzu'],
+    models: ['Hilux', 'Triton', 'D-Max'],
+    unitPrefix: 'LV',
+  },
+  mh: {
+    manufacturers: ['Hino', 'Isuzu', 'Mercedes-Benz'],
+    models: ['500 Series', 'NQR', 'Atego'],
+    unitPrefix: 'MH',
+  },
+  ft: {
+    manufacturers: ['Hino', 'Isuzu', 'UD Trucks'],
+    models: ['500 Series', 'FVR', 'Quester'],
+    unitPrefix: 'FT',
+  },
+  wt: {
+    manufacturers: ['Hino', 'Isuzu', 'Volvo'],
+    models: ['500 Series', 'FVZ', 'FMX'],
+    unitPrefix: 'WT',
+  },
+  dozer: {
+    manufacturers: ['Caterpillar', 'Komatsu', 'John Deere'],
+    models: ['D11T', 'D375A-8', '1050K'],
+    unitPrefix: 'DZ',
+  },
+  grader: {
+    manufacturers: ['Caterpillar', 'Komatsu', 'John Deere'],
+    models: ['16M', 'GD825A-2', '872G'],
+    unitPrefix: 'GR',
+  },
+}
+
+function hashSeed(input: string): number {
+  let hash = 0
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0
+  }
+  return hash
+}
+
+function shiftDays(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function buildEquipment(row: CustomerOverviewRow): {
+  equipment: CustomerEquipmentCount[]
+  equipmentUnits: CustomerEquipmentUnit[]
+} {
   const mix = MIX_BY_MINERAL[row.mineral] ?? MIX_BY_MINERAL.Nickel
-  const totalUnits =
-    row.productionUnitsTotal + row.supportUnitsTotal
+  const totalUnits = row.productionUnitsTotal + row.supportUnitsTotal
   const iotInstalled =
     row.productionUnitsInstalled + row.supportUnitsInstalled
 
   const totalByType = distributeUnits(totalUnits, mix)
   const iotByType = distributeUnits(iotInstalled, mix)
 
-  return EQUIPMENT_TYPES.map((type) => {
+  const equipment = EQUIPMENT_TYPES.map((type) => {
     const total = totalByType[type.id] ?? 0
     const installed = Math.min(total, iotByType[type.id] ?? 0)
     return {
@@ -114,6 +186,40 @@ function buildEquipment(
       iotInstalled: installed,
     }
   }).filter((e) => e.totalUnits > 0 || e.iotInstalled > 0)
+
+  const todayIso = `${TODAY.year}-${String(TODAY.month + 1).padStart(2, '0')}-15`
+  const equipmentUnits: CustomerEquipmentUnit[] = []
+
+  for (const type of equipment) {
+    const catalog = EQUIPMENT_CATALOG[type.id]
+    if (!catalog) continue
+
+    for (let i = 0; i < type.totalUnits; i++) {
+      const seed = hashSeed(`${row.id}:${type.id}:${i}`)
+      const manufacturer =
+        catalog.manufacturers[seed % catalog.manufacturers.length]
+      const model = catalog.models[seed % catalog.models.length]
+      const installed = i < type.iotInstalled
+      const unitNumber = String(i + 1).padStart(3, '0')
+
+      equipmentUnits.push({
+        id: `${row.id}-${type.id}-${unitNumber}`,
+        equipmentTypeId: type.id,
+        equipmentLabel: type.label,
+        unitId: `${catalog.unitPrefix}-${unitNumber}`,
+        manufacturer,
+        model,
+        deviceId: installed
+          ? `IOT-${String((seed % 900000) + 100000)}`
+          : null,
+        installationDate: installed
+          ? shiftDays(todayIso, -((seed % 540) + 30))
+          : null,
+      })
+    }
+  }
+
+  return { equipment, equipmentUnits }
 }
 
 function buildFinancials(
@@ -227,6 +333,6 @@ export function getCustomerIndividualDetail(
   return {
     ...row,
     ...buildFinancials(row, client),
-    equipment: buildEquipment(row),
+    ...buildEquipment(row),
   }
 }
