@@ -11,11 +11,17 @@ function getBackendBaseUrl(): string {
 async function proxyRequest(request: NextRequest, path: string[]) {
   try {
     const url = `${getBackendBaseUrl()}/${path.join('/')}${request.nextUrl.search}`
+    const requestBody =
+      request.method === 'GET' || request.method === 'HEAD'
+        ? undefined
+        : await request.text()
     const response = await fetch(url, {
       method: request.method,
       headers: {
         Accept: 'application/json',
+        ...(requestBody ? { 'Content-Type': 'application/json' } : {}),
       },
+      body: requestBody || undefined,
     })
 
     const body = await response.text()
@@ -31,10 +37,31 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   }
 }
 
-export async function GET(
+async function handleProxy(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await context.params
   return proxyRequest(request, path)
+}
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handleProxy(request, context)
+}
+
+export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handleProxy(request, context)
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> },
+) {
+  return handleProxy(request, context)
 }
