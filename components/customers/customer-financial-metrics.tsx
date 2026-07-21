@@ -1,13 +1,17 @@
 import type { ReactNode } from 'react'
 import {
-  CircleDollarSign,
   FileSignature,
   MapPin,
   PiggyBank,
   Receipt,
+  TrendingUp,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
+import {
+  CumulativeProjectFinancesChart,
+  MonthlyProjectFinancesChart,
+} from '@/components/customers/cumulative-project-finances-chart'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import type { CustomerIndividualDetail } from '@/lib/customers/individual'
 import { formatCompact, formatFull, TODAY } from '@/lib/finance/shared'
@@ -300,11 +304,18 @@ export function CustomerFinancialMetrics({
       ? (customer.currentArr / customer.potentialArr) * 100
       : 0
 
+  // Dummy placeholders until unit economics are wired from billing.
+  const productionInstalled = 18
+  const productionTotal = 24
+  const nonProductionInstalled = 7
+  const nonProductionTotal = 12
+  const arrPerUnit = 42_500
+
   return (
     <section aria-label="Financial metrics" className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <MetricCard label="Revenue" icon={CircleDollarSign}>
-          <div className="flex flex-col gap-4">
+      <MetricCard label="Current Contract" icon={FileSignature}>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <div className="flex flex-col gap-4 xl:col-span-1">
             <div className="flex items-baseline justify-between gap-2">
               <div className="flex flex-col gap-0.5">
                 <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
@@ -334,15 +345,40 @@ export function CustomerFinancialMetrics({
               </div>
             </div>
             <RevenueProgress pct={revenuePct} />
+            <div className="flex items-baseline justify-between gap-2 border-t border-border/40 pt-4">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  Units installed
+                </span>
+                <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
+                  {productionInstalled}/{productionTotal}{' '}
+                  <span className="font-sans text-xs font-normal text-muted-foreground">
+                    production
+                  </span>
+                </span>
+                <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
+                  {nonProductionInstalled}/{nonProductionTotal}{' '}
+                  <span className="font-sans text-xs font-normal text-muted-foreground">
+                    non-production
+                  </span>
+                </span>
+              </div>
+              <div
+                className="h-12 w-px self-center bg-border/50"
+                aria-hidden="true"
+              />
+              <div className="flex flex-col items-end gap-0.5">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  ARR per unit
+                </span>
+                <span className="font-mono text-xl font-semibold tracking-tight tabular-nums text-foreground sm:text-2xl">
+                  {formatCompact(arrPerUnit, 'USD')}
+                </span>
+              </div>
+            </div>
           </div>
-        </MetricCard>
 
-        <MetricCard
-          label="Contract"
-          icon={FileSignature}
-          className="sm:col-span-2 xl:col-span-2"
-        >
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-5 xl:col-span-2">
             <ContractValueBreakdown
               tcv={customer.tcv}
               realizedRevenue={customer.realizedRevenue}
@@ -355,8 +391,27 @@ export function CustomerFinancialMetrics({
               endDate={customer.contractEndDate}
             />
           </div>
-        </MetricCard>
+        </div>
+      </MetricCard>
 
+      <MetricCard label="Cumulative Project Finances" icon={TrendingUp}>
+        <div className="flex flex-col gap-8">
+          <CumulativeProjectFinancesChart
+            data={customer.cumulativeProjectFinances}
+          />
+
+          <div className="border-t border-border/40 pt-8">
+            <p className="mb-4 text-sm font-medium text-muted-foreground">
+              Monthly Project Finances
+            </p>
+            <MonthlyProjectFinancesChart
+              data={customer.cumulativeProjectFinances}
+            />
+          </div>
+        </div>
+      </MetricCard>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <MetricCard label="Total Expenses" icon={Receipt}>
           <p className="font-mono text-2xl font-semibold tracking-tight tabular-nums text-foreground">
             {formatFull(customer.totalExpenses, 'USD')}
@@ -396,3 +451,4 @@ export function CustomerFinancialMetrics({
     </section>
   )
 }
+

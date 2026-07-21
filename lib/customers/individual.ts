@@ -31,6 +31,55 @@ export type CustomerEquipmentUnit = {
   installationDate: string | null
 }
 
+export type CumulativeProjectFinancePoint = {
+  /** ISO-ish key, e.g. "2024-01" */
+  key: string
+  /** Short label, e.g. "Jan 2024" */
+  label: string
+  year: number
+  /** 0-indexed month */
+  month: number
+  /** Cumulative realized revenue + open receivables */
+  cumulativeRevenueAndReceivables: number
+  /** Cumulative CAPEX + OPEX */
+  cumulativeExpenses: number
+  isProjected: boolean
+}
+
+export type MonthlyProjectFinancePoint = {
+  /** ISO-ish key, e.g. "2024-01" */
+  key: string
+  /** Short label, e.g. "Jan 2024" */
+  label: string
+  year: number
+  /** 0-indexed month */
+  month: number
+  /** Monthly billed revenue + receivables */
+  revenueAndReceivables: number
+  /** Monthly CAPEX + OPEX */
+  expenses: number
+  revenue: number
+  receivables: number
+  capex: number
+  opex: number
+  isProjected: boolean
+}
+
+export type CumulativeProjectFinances = {
+  series: CumulativeProjectFinancePoint[]
+  monthlySeries: MonthlyProjectFinancePoint[]
+  /** As-of live month (excludes projected future) */
+  cumulativeRevenue: number
+  cumulativeReceivables: number
+  cumulativeCapex: number
+  cumulativeOpex: number
+  /** Live month only */
+  monthlyRevenue: number
+  monthlyReceivables: number
+  monthlyCapex: number
+  monthlyOpex: number
+}
+
 export type CustomerIndividualDetail = CustomerOverviewRow & {
   mrr: number
   potentialMrr: number
@@ -44,6 +93,7 @@ export type CustomerIndividualDetail = CustomerOverviewRow & {
   totalExpenses: number
   profitability: number
   profitabilityMargin: number
+  cumulativeProjectFinances: CumulativeProjectFinances
   equipment: CustomerEquipmentCount[]
   equipmentUnits: CustomerEquipmentUnit[]
 }
@@ -70,10 +120,34 @@ const CONTRACT_MONTHS: Record<CustomerStatus, number> = {
   Churned: 24,
 }
 
+const MONTH_LABELS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const
+
 function shiftMonths(isoDate: string, months: number): string {
   const date = new Date(`${isoDate}T00:00:00Z`)
   date.setUTCMonth(date.getUTCMonth() + months)
   return date.toISOString().slice(0, 10)
+}
+
+function parseYearMonth(iso: string): { year: number; month: number } {
+  const date = new Date(`${iso}T00:00:00Z`)
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() }
+}
+
+function isAfterLiveMonth(year: number, month: number): boolean {
+  return year > TODAY.year || (year === TODAY.year && month > TODAY.month)
 }
 
 function distributeUnits(
@@ -311,6 +385,248 @@ function buildFinancials(
   }
 }
 
+/**
+ * Monthly cumulative revenue/receivables vs CAPEX+OPEX from contract start
+ * through contract end. Actual months align to Current Contract snapshots;
+ * later months project remaining TCV / expenses linearly.
+ */
+function buildCumulativeProjectFinances(
+  row: CustomerOverviewRow,
+  financials: Pick<
+    CustomerIndividualDetail,
+    | 'contractStartDate'
+    | 'contractEndDate'
+    | 'tcv'
+    | 'realizedRevenue'
+    | 'receivables'
+    | 'overdueReceivables'
+    | 'totalExpenses'
+  >,
+): CumulativeProjectFinances {
+  const start = parseYearMonth(financials.contractStartDate)
+  const end = parseYearMonth(financials.contractEndDate)
+  const totalMonths =
+    (end.year - start.year) * 12 + (end.month - start.month) + 1
+
+  if (totalMonths <= 0) {
+    return {
+      series: [],
+      monthlySeries: [],
+      cumulativeRevenue: financials.realizedRevenue,
+      cumulativeReceivables:
+        financials.receivables + financials.overdueReceivables,
+      cumulativeCapex: 0,
+      cumulativeOpex: 0,
+      monthlyRevenue: 0,
+      monthlyReceivables: 0,
+      monthlyCapex: 0,
+      monthlyOpex: 0,
+    }
+  }
+
+  const billedToDate =
+    financials.realizedRevenue +
+    financials.receivables +
+    financials.overdueReceivables
+  const remainingBill = Math.max(0, financials.tcv - billedToDate)
+
+  const capexShare =
+    row.status === 'Commercial'
+      ? 0.32
+      : row.status === 'Trial'
+        ? 0.4
+        : row.status === 'Pitch'
+          ? 0.48
+          : 0.28
+  const totalCapex = Math.round(financials.totalExpenses * capexShare)
+  const totalOpex = Math.max(0, financials.totalExpenses - totalCapex)
+
+  // Front-load CAPEX over the first ~1/5 of the contract (min 2, max 8 months).
+  const capexWindow = Math.min(8, Math.max(2, Math.round(totalMonths / 5)))
+
+  type MonthMeta = {
+    year: number
+    month: number
+    key: string
+    label: string
+    isProjected: boolean
+    index: number
+  }
+
+  const months: MonthMeta[] = []
+  for (let i = 0; i < totalMonths; i++) {
+    const absMonth = start.month + i
+    const year = start.year + Math.floor(absMonth / 12)
+    const month = ((absMonth % 12) + 12) % 12
+    months.push({
+      year,
+      month,
+      key: `${year}-${String(month + 1).padStart(2, '0')}`,
+      label: `${MONTH_LABELS[month]} ${year}`,
+      isProjected: isAfterLiveMonth(year, month),
+      index: i,
+    })
+  }
+
+  const actualMonths = months.filter((m) => !m.isProjected)
+  const projectedMonths = months.filter((m) => m.isProjected)
+  const actualCount = actualMonths.length
+  const projectedCount = projectedMonths.length
+
+  // CAPEX weights: decaying front-load across the full contract schedule.
+  const capexWeights = months.map((_, i) => {
+    if (i >= capexWindow) return 0.04 // small residual / change orders
+    return capexWindow - i
+  })
+  const capexWeightSum = capexWeights.reduce((s, w) => s + w, 0) || 1
+  const monthlyCapex = capexWeights.map((w) =>
+    Math.round((totalCapex * w) / capexWeightSum),
+  )
+  // Fix rounding drift on last month.
+  const capexAllocated = monthlyCapex.reduce((s, v) => s + v, 0)
+  if (monthlyCapex.length > 0) {
+    monthlyCapex[monthlyCapex.length - 1] += totalCapex - capexAllocated
+  }
+
+  const monthlyOpex =
+    totalMonths > 0 ? Math.round(totalOpex / totalMonths) : 0
+  const monthlyOpexArr = months.map((_, i) =>
+    i === totalMonths - 1
+      ? totalOpex - monthlyOpex * (totalMonths - 1)
+      : monthlyOpex,
+  )
+
+  // Revenue & receivables increments: actual months sum to billedToDate;
+  // projected months sum to remainingBill. Mild seasonal ripple for shape.
+  const actualBillWeights = actualMonths.map((m) => {
+    const seasonal = 1 + 0.06 * Math.sin((m.month / 12) * Math.PI * 2)
+    // Slight ramp early in contract.
+    const ramp = 0.7 + 0.3 * Math.min(1, (m.index + 1) / Math.max(actualCount, 1))
+    return seasonal * ramp
+  })
+  const actualWeightSum = actualBillWeights.reduce((s, w) => s + w, 0) || 1
+  const projectedBillWeights = projectedMonths.map((m) => {
+    const seasonal = 1 + 0.06 * Math.sin((m.month / 12) * Math.PI * 2)
+    return seasonal
+  })
+  const projectedWeightSum =
+    projectedBillWeights.reduce((s, w) => s + w, 0) || 1
+
+  const monthlyBill = months.map((m) => {
+    if (!m.isProjected) {
+      const ai = actualMonths.findIndex((a) => a.index === m.index)
+      return Math.round(
+        (billedToDate * (actualBillWeights[ai] ?? 0)) / actualWeightSum,
+      )
+    }
+    if (projectedCount === 0) return 0
+    const pi = projectedMonths.findIndex((p) => p.index === m.index)
+    return Math.round(
+      (remainingBill * (projectedBillWeights[pi] ?? 0)) / projectedWeightSum,
+    )
+  })
+  // Fix rounding on last actual / last projected.
+  if (actualCount > 0) {
+    const lastActualIdx = actualMonths[actualCount - 1].index
+    const actualSum = actualMonths.reduce(
+      (s, m) => s + monthlyBill[m.index],
+      0,
+    )
+    monthlyBill[lastActualIdx] += billedToDate - actualSum
+  }
+  if (projectedCount > 0) {
+    const lastProjIdx = projectedMonths[projectedCount - 1].index
+    const projSum = projectedMonths.reduce(
+      (s, m) => s + monthlyBill[m.index],
+      0,
+    )
+    monthlyBill[lastProjIdx] += remainingBill - projSum
+  }
+
+  const realizedShare =
+    billedToDate > 0 ? financials.realizedRevenue / billedToDate : 0.72
+
+  let cumBill = 0
+  let cumCapex = 0
+  let cumOpex = 0
+  let asOfCapex = 0
+  let asOfOpex = 0
+  let liveMonthRevenue = 0
+  let liveMonthReceivables = 0
+  let liveMonthCapex = 0
+  let liveMonthOpex = 0
+
+  const monthlySeries: MonthlyProjectFinancePoint[] = months.map((m, i) => {
+    const bill = monthlyBill[i]
+    const capex = monthlyCapex[i]
+    const opex = monthlyOpexArr[i]
+    const revenue = Math.round(bill * realizedShare)
+    const receivables = Math.max(0, bill - revenue)
+
+    if (!m.isProjected) {
+      liveMonthRevenue = revenue
+      liveMonthReceivables = receivables
+      liveMonthCapex = capex
+      liveMonthOpex = opex
+    }
+
+    return {
+      key: m.key,
+      label: m.label,
+      year: m.year,
+      month: m.month,
+      revenueAndReceivables: bill,
+      expenses: capex + opex,
+      revenue,
+      receivables,
+      capex,
+      opex,
+      isProjected: m.isProjected,
+    }
+  })
+
+  const series: CumulativeProjectFinancePoint[] = months.map((m, i) => {
+    cumBill += monthlyBill[i]
+    cumCapex += monthlyCapex[i]
+    cumOpex += monthlyOpexArr[i]
+
+    if (!m.isProjected) {
+      asOfCapex = cumCapex
+      asOfOpex = cumOpex
+    }
+
+    return {
+      key: m.key,
+      label: m.label,
+      year: m.year,
+      month: m.month,
+      cumulativeRevenueAndReceivables: cumBill,
+      cumulativeExpenses: cumCapex + cumOpex,
+      isProjected: m.isProjected,
+    }
+  })
+
+  // Snap the last actual point to Current Contract billed total for consistency.
+  const lastActual = [...series].reverse().find((p) => !p.isProjected)
+  if (lastActual) {
+    lastActual.cumulativeRevenueAndReceivables = billedToDate
+  }
+
+  return {
+    series,
+    monthlySeries,
+    cumulativeRevenue: financials.realizedRevenue,
+    cumulativeReceivables:
+      financials.receivables + financials.overdueReceivables,
+    cumulativeCapex: asOfCapex,
+    cumulativeOpex: asOfOpex,
+    monthlyRevenue: liveMonthRevenue,
+    monthlyReceivables: liveMonthReceivables,
+    monthlyCapex: liveMonthCapex,
+    monthlyOpex: liveMonthOpex,
+  }
+}
+
 export function getCustomerOptions(): CustomerOption[] {
   return getCustomerOverviewRows()
     .map((row) => ({
@@ -330,9 +646,12 @@ export function getCustomerIndividualDetail(
   const client = getClientById(id)
   if (!client) return null
 
+  const financials = buildFinancials(row, client)
+
   return {
     ...row,
-    ...buildFinancials(row, client),
+    ...financials,
+    cumulativeProjectFinances: buildCumulativeProjectFinances(row, financials),
     ...buildEquipment(row),
   }
 }
