@@ -26,8 +26,8 @@ Browser  →  /api/{path}  →  {NEXT_PUBLIC_API_BASE_URL}/{path}
 | Finance | `/` | Net Revenue Retention chart | Placeholder (reserved slot) |
 | Finance | `/` | Client matrix heatmap | Placeholder |
 | Finance | `/unit-economics` | Revenue & receivables chart | Placeholder |
-| Finance | `/accounts` | Bank account cards | Placeholder |
-| Finance | `/accounts` | Liquid assets summary | Placeholder |
+| Finance | `/accounts` | Bank account cards | **API** |
+| Finance | `/accounts` | Liquid assets summary | **API** |
 | Finance | `/accounts` | Internal transactions table | Placeholder |
 | Finance | `/accounts` | External transactions table | Placeholder |
 | Customers | `/customers` | Indonesia site map | Placeholder |
@@ -234,6 +234,85 @@ Vehicle type mapping (API ↔ UI):
 
 ---
 
+### 4. Treasury accounts
+
+**Used by:** Bank account cards (`/accounts`)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **Endpoint** | `/treasury/accounts` |
+| **Proxied URL** | `/api/treasury/accounts` |
+| **Source file** | `lib/finance/treasury-accounts.ts` |
+| **Hook** | `hooks/use-treasury-accounts.ts` → `useTreasuryAccounts` |
+
+**Response:** array of account records.
+
+```ts
+type TreasuryAccountApiRecord = {
+  id: number
+  name: string
+  bank_name: string
+  currency: string
+  cash_balance: number | string
+  fixed_deposit_balance: number | string
+  other_balance?: number | string
+  // unused by cards: country, account_number, routing_number, swift_code, …
+}
+```
+
+**Mapped to UI type** (`BankAccount`):
+
+```ts
+type BankAccount = {
+  id: string
+  bank: string
+  accountName: string
+  currency: 'IDR' | 'USD'
+  balances: { label: string; amount: number }[]  // Cash Balance + Fixed Deposit
+}
+```
+
+---
+
+### 5. Treasury account summaries
+
+**Used by:** Liquid assets summary card (`/accounts`)
+
+| | |
+|---|---|
+| **Method** | `GET` |
+| **Endpoint** | `/treasury/accounts/summaries` |
+| **Proxied URL** | `/api/treasury/accounts/summaries` |
+| **Source file** | `lib/finance/treasury-accounts.ts` |
+| **Hook** | `hooks/use-treasury-accounts.ts` → `useTreasuryAccountSummaries` |
+
+**Response:**
+
+```ts
+type TreasuryAccountSummariesApiRecord = {
+  cash_balance_idr: number | string
+  cash_balance_usd: number | string
+  fixed_deposit_idr: number | string
+  fixed_deposit_usd: number | string
+  total: number | string   // Total (USD)
+}
+```
+
+**Mapped to UI type** (`LiquidAssets`):
+
+```ts
+type LiquidAssets = {
+  totalCashBalanceIdr: number
+  totalCashBalanceUsd: number
+  totalFixedDepositIdr: number
+  totalFixedDepositUsd: number
+  totalInUsd: number
+}
+```
+
+---
+
 ## Placeholder Data
 
 These features render from static or generated mock data in `lib/`. No backend calls are made.
@@ -298,22 +377,12 @@ type ClientSiteRecord = {
 
 | Feature | Source | Notes |
 |---|---|---|
-| Bank account cards | `lib/accounts-data.ts` → `BANK_ACCOUNTS` | 5 mock accounts (BCA, Hana Bank, DBS) in IDR and USD. |
-| Liquid assets summary | `lib/accounts-data.ts` → `calculateLiquidAssets()` | Aggregates cash + fixed deposits; FX rate `FX_RATE = 16_250` IDR/USD. |
 | Internal transactions | `lib/accounts-data.ts` → `INTERNAL_TRANSACTIONS` | Transfers between internal accounts. |
 | External transactions | `lib/accounts-data.ts` → `EXTERNAL_TRANSACTIONS` | Inbound/outbound with external parties. |
 
 **Key placeholder types** (`lib/accounts-data.ts`):
 
 ```ts
-type BankAccount = {
-  id: string
-  bank: string
-  accountName: string
-  currency: 'IDR' | 'USD'
-  balances: { label: string; amount: number }[]
-}
-
 type InternalTransaction = {
   id: string
   date: string

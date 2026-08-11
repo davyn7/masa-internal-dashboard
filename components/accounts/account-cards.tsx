@@ -1,44 +1,35 @@
 'use client'
 
 import { Landmark } from 'lucide-react'
-import { BANK_ACCOUNTS, type BankAccount } from '@/lib/accounts-data'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import {
+  useTreasuryAccountSummaries,
+  useTreasuryAccounts,
+} from '@/hooks/use-treasury-accounts'
+import type { BankAccount } from '@/lib/finance/treasury-accounts'
 import { LiquidAssetsCard } from './liquid-assets-card'
 
 const BANK_ACCENT: Record<string, string> = {
-  BCA:       'var(--chart-3)',   // blue (was DBS)
-  'Hana Bank': 'var(--chart-1)', // cyan (was BCA)
-  DBS:       '#ef4444',          // red
+  BCA: 'var(--chart-3)',
+  'Hana Bank': 'var(--chart-1)',
+  DBS: '#ef4444',
 }
 
+const ACCOUNT_LAYOUT = [
+  'DBS Holding Account',
+  'Hana Bank Savings Account',
+  'BCA FOREX Savings Account',
+  'BCA Revenue Account',
+  'BCA Expense Account',
+  'BCA Salary Account',
+] as const
+
 function formatAmount(amount: number, currency: 'IDR' | 'USD'): string {
-  if (currency === 'IDR') {
-    // Compact IDR: show as "Rp 4.82 B" or "Rp 821 M"
-    if (amount >= 1_000_000_000) {
-      return `Rp ${(amount / 1_000_000_000).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })} B`
-    }
-    if (amount >= 1_000_000) {
-      return `Rp ${(amount / 1_000_000).toLocaleString('en-US', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 1,
-      })} M`
-    }
-    return `Rp ${amount.toLocaleString('en-US')}`
-  }
-  // USD
-  if (amount >= 1_000_000) {
-    return `$${(amount / 1_000_000).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })} M`
-  }
-  return `$${amount.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`
+  const formatted = amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  return currency === 'IDR' ? `Rp ${formatted}` : `$${formatted}`
 }
 
 function AccountCard({ account }: { account: BankAccount }) {
@@ -47,7 +38,6 @@ function AccountCard({ account }: { account: BankAccount }) {
 
   return (
     <Card className="relative flex flex-col overflow-hidden border-border/60 bg-card">
-      {/* top accent bar */}
       <span
         className="absolute inset-x-0 top-0 h-[2px]"
         style={{ background: accent }}
@@ -55,7 +45,6 @@ function AccountCard({ account }: { account: BankAccount }) {
       />
 
       <CardHeader className="flex flex-col gap-1 pt-5 pb-3">
-        {/* Bank badge + currency pill */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <Landmark
@@ -75,14 +64,12 @@ function AccountCard({ account }: { account: BankAccount }) {
           </span>
         </div>
 
-        {/* Account name */}
         <p className="text-sm font-medium leading-snug text-foreground">
           {account.accountName}
         </p>
       </CardHeader>
 
       <CardContent className="flex flex-1 flex-col gap-3 pb-5">
-        {/* Balance lines */}
         <div className="flex flex-col gap-2">
           {account.balances.map((bal) => (
             <div key={bal.label} className="flex flex-col gap-0.5">
@@ -96,7 +83,6 @@ function AccountCard({ account }: { account: BankAccount }) {
           ))}
         </div>
 
-        {/* Divider + total if multi-balance */}
         {account.balances.length > 1 && (
           <>
             <div className="h-px bg-border/60" aria-hidden="true" />
@@ -116,24 +102,67 @@ function AccountCard({ account }: { account: BankAccount }) {
   )
 }
 
-function getAccount(id: string): BankAccount {
-  const account = BANK_ACCOUNTS.find((a) => a.id === id)
-  if (!account) throw new Error(`Unknown account: ${id}`)
-  return account
+function EmptyAccountCard({ name }: { name: string }) {
+  return (
+    <Card className="relative flex min-h-[180px] flex-col items-center justify-center overflow-hidden border-border/60 bg-card p-4">
+      <p className="text-center text-sm text-muted-foreground">{name}</p>
+      <p className="text-center text-xs text-muted-foreground">No data</p>
+    </Card>
+  )
 }
 
 export function AccountCards() {
+  const {
+    data: accounts,
+    loading: accountsLoading,
+    error: accountsError,
+  } = useTreasuryAccounts()
+  const {
+    data: summaries,
+    loading: summariesLoading,
+    error: summariesError,
+  } = useTreasuryAccountSummaries()
+
+  const loading = accountsLoading || summariesLoading
+  const error = accountsError ?? summariesError
+
+  if (loading) {
+    return (
+      <p className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
+        Loading accounts…
+      </p>
+    )
+  }
+
+  if (error) {
+    return (
+      <p className="flex min-h-[240px] items-center justify-center text-sm text-destructive">
+        {error}
+      </p>
+    )
+  }
+
+  if (!summaries) {
+    return (
+      <p className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">
+        No summary data
+      </p>
+    )
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div className="h-full lg:row-span-2">
-        <LiquidAssetsCard />
+        <LiquidAssetsCard assets={summaries} />
       </div>
-      <AccountCard account={getAccount('dbs-holding')} />
-      <AccountCard account={getAccount('hana-savings')} />
-      <AccountCard account={getAccount('bca-forex')} />
-      <AccountCard account={getAccount('bca-revenue')} />
-      <AccountCard account={getAccount('bca-expense')} />
-      <AccountCard account={getAccount('bca-salary')} />
+      {ACCOUNT_LAYOUT.map((name) => {
+        const account = accounts.find((a) => a.accountName === name)
+        return account ? (
+          <AccountCard key={account.id} account={account} />
+        ) : (
+          <EmptyAccountCard key={name} name={name} />
+        )
+      })}
     </div>
   )
 }

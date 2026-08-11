@@ -49,8 +49,10 @@ lib/
 ├── finance/
 │   ├── shared.ts               # Types, time series, formatting utilities
 │   ├── mrr-arr.ts              # MRR/ARR KPIs and range filtering
+│   ├── mrr-arr-monthly.ts      # MRR/ARR monthly API
+│   ├── treasury-accounts.ts    # Bank accounts + liquid assets API
 │   └── unit-economics.ts       # Revenue & receivables filtering
-└── accounts-data.ts            # Bank accounts and transactions
+└── accounts-data.ts            # Transaction placeholder data
 ```
 
 ### Page → component mapping

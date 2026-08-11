@@ -1,45 +1,22 @@
 'use client'
 
 import { Banknote } from 'lucide-react'
-import { calculateLiquidAssets, FX_RATE } from '@/lib/accounts-data'
+import type { LiquidAssets } from '@/lib/finance/treasury-accounts'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
 function formatAmount(amount: number, currency: 'IDR' | 'USD'): string {
-  if (currency === 'IDR') {
-    if (amount >= 1_000_000_000) {
-      return `Rp ${(amount / 1_000_000_000).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })} B`
-    }
-    if (amount >= 1_000_000) {
-      return `Rp ${(amount / 1_000_000).toLocaleString('en-US', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 1,
-      })} M`
-    }
-    return `Rp ${amount.toLocaleString('en-US')}`
-  }
-  // USD
-  if (amount >= 1_000_000) {
-    return `$${(amount / 1_000_000).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })} M`
-  }
-  return `$${amount.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`
+  const formatted = amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  return currency === 'IDR' ? `Rp ${formatted}` : `$${formatted}`
 }
 
-export function LiquidAssetsCard() {
-  const assets = calculateLiquidAssets()
-  const accentColor = 'var(--chart-2)' // amber accent for summary card
+export function LiquidAssetsCard({ assets }: { assets: LiquidAssets }) {
+  const accentColor = 'var(--chart-2)'
 
   return (
     <Card className="relative flex h-full flex-col overflow-hidden border-border/60 bg-card">
-      {/* top accent bar */}
       <span
         className="absolute inset-x-0 top-0 h-[2px]"
         style={{ background: accentColor }}
@@ -68,7 +45,6 @@ export function LiquidAssetsCard() {
       </CardHeader>
 
       <CardContent className="flex flex-1 flex-col gap-3 pb-5">
-        {/* Balance lines */}
         <div className="flex flex-col gap-2">
           <div className="flex flex-col gap-0.5">
             <span className="text-[11px] text-muted-foreground">
@@ -107,7 +83,6 @@ export function LiquidAssetsCard() {
           </div>
         </div>
 
-        {/* Divider + total */}
         <div className="h-px bg-border/60" aria-hidden="true" />
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-medium text-muted-foreground">
