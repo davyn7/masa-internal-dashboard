@@ -38,7 +38,7 @@ export function LiquidAssetsCard() {
   const accentColor = 'var(--chart-2)' // amber accent for summary card
 
   return (
-    <Card className="relative flex flex-col overflow-hidden border-border/60 bg-card">
+    <Card className="relative flex h-full flex-col overflow-hidden border-border/60 bg-card">
       {/* top accent bar */}
       <span
         className="absolute inset-x-0 top-0 h-[2px]"

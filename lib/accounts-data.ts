@@ -19,6 +19,7 @@ export const BANK_ACCOUNTS: BankAccount[] = [
     currency: 'IDR',
     balances: [
       { label: 'Cash Balance', amount: 4_820_500_000 },
+      { label: 'Fixed Deposit', amount: 0 },
     ],
   },
   {
@@ -28,6 +29,7 @@ export const BANK_ACCOUNTS: BankAccount[] = [
     currency: 'IDR',
     balances: [
       { label: 'Cash Balance', amount: 1_254_750_000 },
+      { label: 'Fixed Deposit', amount: 0 },
     ],
   },
   {
@@ -37,6 +39,17 @@ export const BANK_ACCOUNTS: BankAccount[] = [
     currency: 'USD',
     balances: [
       { label: 'Cash Balance', amount: 198_400 },
+      { label: 'Fixed Deposit', amount: 0 },
+    ],
+  },
+  {
+    id: 'bca-salary',
+    bank: 'BCA',
+    accountName: 'Salary Account',
+    currency: 'IDR',
+    balances: [
+      { label: 'Cash Balance', amount: 1_100_000_000 },
+      { label: 'Fixed Deposit', amount: 0 },
     ],
   },
   {

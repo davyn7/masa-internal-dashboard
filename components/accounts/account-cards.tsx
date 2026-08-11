@@ -116,13 +116,24 @@ function AccountCard({ account }: { account: BankAccount }) {
   )
 }
 
+function getAccount(id: string): BankAccount {
+  const account = BANK_ACCOUNTS.find((a) => a.id === id)
+  if (!account) throw new Error(`Unknown account: ${id}`)
+  return account
+}
+
 export function AccountCards() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-      <LiquidAssetsCard />
-      {BANK_ACCOUNTS.map((account) => (
-        <AccountCard key={account.id} account={account} />
-      ))}
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="h-full lg:row-span-2">
+        <LiquidAssetsCard />
+      </div>
+      <AccountCard account={getAccount('dbs-holding')} />
+      <AccountCard account={getAccount('hana-savings')} />
+      <AccountCard account={getAccount('bca-forex')} />
+      <AccountCard account={getAccount('bca-revenue')} />
+      <AccountCard account={getAccount('bca-expense')} />
+      <AccountCard account={getAccount('bca-salary')} />
     </div>
   )
 }
