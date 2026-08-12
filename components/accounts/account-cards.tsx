@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Landmark } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import {
@@ -37,7 +38,7 @@ function AccountCard({ account }: { account: BankAccount }) {
   const totalAmount = account.balances.reduce((s, b) => s + b.amount, 0)
 
   return (
-    <Card className="relative flex flex-col overflow-hidden border-border/60 bg-card">
+    <Card className="relative flex h-full cursor-pointer flex-col overflow-hidden border-border/60 bg-card transition-colors hover:bg-muted/40">
       <span
         className="absolute inset-x-0 top-0 h-[2px]"
         style={{ background: accent }}
@@ -158,7 +159,13 @@ export function AccountCards() {
       {ACCOUNT_LAYOUT.map((name) => {
         const account = accounts.find((a) => a.accountName === name)
         return account ? (
-          <AccountCard key={account.id} account={account} />
+          <Link
+            key={account.id}
+            href={`/treasury/account-details?account=${account.id}`}
+            className="block h-full rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <AccountCard account={account} />
+          </Link>
         ) : (
           <EmptyAccountCard key={name} name={name} />
         )

@@ -22,7 +22,7 @@ export default async function CustomerIndividualPage({
 
   return (
     <DashboardPage
-      title="Individual"
+      title="Customer Details"
       description="Customer detail, equipment, and financials"
     >
       <CustomerIndividualView

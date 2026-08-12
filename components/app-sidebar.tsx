@@ -13,6 +13,7 @@ import {
   Truck,
   UserRound,
   Users,
+  Wallet,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -39,12 +40,24 @@ type NavItem = {
 const financeNav: NavItem[] = [
   { title: 'MRR & ARR', icon: BarChart3, href: '/' },
   { title: 'Unit Economics', icon: LineChart, href: '/unit-economics' },
-  { title: 'Accounts', icon: LandmarkIcon, href: '/accounts' },
+]
+
+const treasuryNav: NavItem[] = [
+  { title: 'Accounts Overview', icon: LandmarkIcon, href: '/treasury/accounts' },
+  {
+    title: 'Account Details',
+    icon: Wallet,
+    href: '/treasury/account-details',
+  },
 ]
 
 const customersNav: NavItem[] = [
-  { title: 'Overview', icon: Users, href: '/customers' },
-  { title: 'Individual', icon: UserRound, href: '/customers/individual' },
+  { title: 'Customers Overview', icon: Users, href: '/customers' },
+  {
+    title: 'Customer Details',
+    icon: UserRound,
+    href: '/customers/individual',
+  },
   { title: 'Contracts', icon: FileText, href: '/customers/contracts' },
 ]
 
@@ -105,7 +118,8 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <NavSection label="Finance" items={financeNav} />
-        <NavSection label="Customers" items={customersNav} />
+        <NavSection label="Treasury" items={treasuryNav} />
+        <NavSection label="Commercial" items={customersNav} />
         <NavSection label="Assets" items={assetsNav} />
       </SidebarContent>
       <SidebarFooter>

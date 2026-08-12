@@ -35,6 +35,9 @@ export type BankAccount = {
   accountName: string
   currency: 'IDR' | 'USD'
   balances: BalanceLine[]
+  accountNumber?: string
+  country?: string
+  swiftCode?: string
 }
 
 export type LiquidAssets = {
@@ -66,6 +69,9 @@ export function mapAccountRecord(record: TreasuryAccountApiRecord): BankAccount 
         amount: toNumber(record.fixed_deposit_balance),
       },
     ],
+    accountNumber: record.account_number || undefined,
+    country: record.country || undefined,
+    swiftCode: record.swift_code || undefined,
   }
 }
 
