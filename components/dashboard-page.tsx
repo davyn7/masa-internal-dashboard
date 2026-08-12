@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 
 type DashboardPageProps = {
   title: string
@@ -14,7 +15,7 @@ export function DashboardPage({
   title,
   description,
   children,
-  mainClassName = 'flex flex-1 flex-col gap-4 p-4 md:p-6',
+  mainClassName,
 }: DashboardPageProps) {
   return (
     <>
@@ -30,7 +31,14 @@ export function DashboardPage({
           Live
         </span>
       </header>
-      <main className={mainClassName}>{children}</main>
+      <main
+        className={cn(
+          'flex min-w-0 flex-1 flex-col gap-4 overflow-x-hidden p-4 md:p-6',
+          mainClassName,
+        )}
+      >
+        {children}
+      </main>
     </>
   )
 }

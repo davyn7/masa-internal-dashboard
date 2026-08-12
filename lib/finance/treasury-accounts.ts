@@ -1,4 +1,4 @@
-import { apiGet } from '@/lib/api/client'
+import { apiGet, apiPost } from '@/lib/api/client'
 
 export type TreasuryAccountApiRecord = {
   id: number
@@ -91,4 +91,48 @@ export async function fetchTreasuryAccountSummaries(): Promise<LiquidAssets> {
     '/treasury/accounts/summaries',
   )
   return mapSummariesRecord(record)
+}
+
+export type CalculateFixedDepositParams = {
+  accountId: string
+  principalAmount: number
+  interestRate: number
+  tenor: number
+  depositDate: string
+}
+
+export type CalculateFixedDepositApiRecord = {
+  interest_amount: number | string
+  total_amount: number | string
+  maturity_date: string
+  is_gross: boolean
+}
+
+export type CalculatedFixedDeposit = {
+  interestAmount: number
+  totalAmount: number
+  maturityDate: string
+  interestBasis: 'net' | 'gross'
+}
+
+export async function calculateFixedDeposit(
+  params: CalculateFixedDepositParams,
+): Promise<CalculatedFixedDeposit> {
+  const record = await apiPost<CalculateFixedDepositApiRecord>(
+    '/treasury/calculate_fixed_deposit',
+    {
+      account_id: Number(params.accountId),
+      principal_amount: params.principalAmount,
+      interest_rate: params.interestRate,
+      tenor: params.tenor,
+      deposit_date: params.depositDate,
+    },
+  )
+
+  return {
+    interestAmount: toNumber(record.interest_amount),
+    totalAmount: toNumber(record.total_amount),
+    maturityDate: record.maturity_date,
+    interestBasis: record.is_gross ? 'gross' : 'net',
+  }
 }
