@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   BarChart3,
+  Box,
   Briefcase,
   Cpu,
   FileText,
@@ -67,6 +68,10 @@ const assetsNav: NavItem[] = [
   { title: 'IoT Devices', icon: Cpu, href: '/assets/iot-devices' },
 ]
 
+const rdNav: NavItem[] = [
+  { title: 'Digital Twin', icon: Box, href: '/rd/digital-twin' },
+]
+
 function NavSection({ label, items }: { label: string; items: NavItem[] }) {
   const pathname = usePathname()
 
@@ -121,6 +126,7 @@ export function AppSidebar() {
         <NavSection label="Treasury" items={treasuryNav} />
         <NavSection label="Commercial" items={customersNav} />
         <NavSection label="Assets" items={assetsNav} />
+        <NavSection label="R&D" items={rdNav} />
       </SidebarContent>
       <SidebarFooter>
         <div className="flex items-center gap-2.5 rounded-md px-1 py-1.5 group-data-[collapsible=icon]:justify-center">
