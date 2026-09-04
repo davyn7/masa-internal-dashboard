@@ -11,6 +11,7 @@ import {
   Gauge,
   LandmarkIcon,
   LineChart,
+  Mountain,
   Truck,
   UserRound,
   Users,
@@ -70,6 +71,7 @@ const assetsNav: NavItem[] = [
 
 const rdNav: NavItem[] = [
   { title: 'Digital Twin', icon: Box, href: '/rd/digital-twin' },
+  { title: 'Model', icon: Mountain, href: '/rd/model' },
 ]
 
 function NavSection({ label, items }: { label: string; items: NavItem[] }) {

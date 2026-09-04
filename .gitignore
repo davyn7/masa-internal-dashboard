@@ -9,6 +9,9 @@ __v0_jsx-dev-runtime.ts
 # Environment variables
 .env*.local
 
+# Cesium static assets (copied via pnpm copy-cesium / postinstall)
+public/cesium/
+
 # Common ignores
 node_modules
 .pnpm-store/
