@@ -9,7 +9,11 @@ import {
   OrbitControls,
   Text,
 } from '@react-three/drei'
+import { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import * as THREE from 'three'
+import { RotateCcw } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
 
 import {
   densifyLocalRing,
@@ -544,9 +548,31 @@ export function ModelTerrainScene({
 }) {
   const frame = useMemo(() => frameFromDem(dem), [dem])
   const roseRef = useRef<HTMLDivElement>(null)
+  const controlsRef = useRef<OrbitControlsImpl | null>(null)
+
+  function resetView() {
+    const controls = controlsRef.current
+    if (!controls) return
+    const cam = controls.object
+    cam.position.set(frame.camera[0], frame.camera[1], frame.camera[2])
+    controls.target.set(frame.target[0], frame.target[1], frame.target[2])
+    controls.update()
+  }
 
   return (
     <div className="absolute inset-0">
+      <div className="pointer-events-none absolute top-3 left-3 z-10">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="pointer-events-auto gap-1.5 bg-[#10161c]/85 text-[#e8eef2] hover:bg-[#10161c]"
+          onClick={resetView}
+        >
+          <RotateCcw className="size-3.5" aria-hidden="true" />
+          Reset view
+        </Button>
+      </div>
       <CompassOverlay roseRef={roseRef} />
       <Canvas
         className="h-full w-full touch-none"
@@ -567,15 +593,15 @@ export function ModelTerrainScene({
         <directionalLight position={[-420, 280, -520]} intensity={0.28} />
 
         <OrbitControls
+          ref={controlsRef}
           makeDefault
           enableDamping
           dampingFactor={0.08}
           enablePan={false}
-          zoomToCursor={false}
+          zoomToCursor
           target={frame.target}
           minDistance={frame.minDistance}
           maxDistance={frame.maxDistance}
-          // Rotate freely around the terrain center; tilt to side-on for cross-section.
           minPolarAngle={0.08}
           maxPolarAngle={Math.PI / 2}
         />

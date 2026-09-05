@@ -10,7 +10,7 @@ import {
 import { ModelTerrainCanvas } from '@/components/rd/model-terrain-canvas'
 import { ModelTifTable, type TifCellFile } from '@/components/rd/model-tif-table'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { parseElevationGeoTiffs } from '@/lib/rd/model-geotiff'
 import {
   isPolygonType,
@@ -180,88 +180,88 @@ export function ModelView() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent
-          value="data"
-          className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto pt-2"
-        >
-          <ModelTifTable
-            rows={rows}
-            cols={cols}
-            cells={cells}
-            onRowsChange={(next) => resizeGrid(next, cols)}
-            onColsChange={(next) => resizeGrid(rows, next)}
-            onCellFile={onCellFile}
-          />
-          <ModelPolygonTable
-            rows={polygons}
-            onNameChange={(id, name) => updatePolygon(id, { name })}
-            onTypeChange={(id, type) => updatePolygon(id, { type })}
-            onGeoJsonFile={(id, file) =>
-              updatePolygon(id, {
-                geojson: file ? { file, name: file.name } : null,
-              })
-            }
-            onAddRow={() =>
-              setPolygons((prev) => [...prev, newPolygonRow()])
-            }
-            onRemoveRow={(id) =>
-              setPolygons((prev) =>
-                prev.length <= 1 ? prev : prev.filter((row) => row.id !== id),
-              )
-            }
-          />
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">
-              Heights are treated as EGM2008 orthometric elevations and applied
-              directly as mesh elevations (no geoid-to-ellipsoid conversion).
-              Polygon Y is sampled from the same TIF surface.
-            </p>
-            <Button
-              type="button"
-              className="shrink-0 self-end sm:self-auto"
-              disabled={!hasFile || rendering}
-              onClick={() => {
-                void onRender()
-              }}
-            >
-              {rendering ? 'Rendering…' : 'Render'}
-            </Button>
-          </div>
-          {error ? (
-            <p className="text-sm text-destructive" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </TabsContent>
-
-        <TabsContent
-          value="rendering"
-          keepMounted
-          className="relative min-h-[min(70vh,720px)] flex-1 overflow-hidden rounded-md border border-border/60 pt-0"
-        >
-          {dem ? (
-            <ModelTerrainCanvas
-              dem={dem}
-              overlays={overlays}
-              active={tab === 'rendering'}
-              sceneKey={`${sceneEpoch}-${dem.cols}x${dem.rows}-${overlays.length}`}
+        {/*
+          Manual panel switching (not TabsContent): Base UI panels use `hidden`
+          / display:none, which breaks WebGL on first mount after Render.
+        */}
+        {tab === 'data' ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto pt-2">
+            <ModelTifTable
+              rows={rows}
+              cols={cols}
+              cells={cells}
+              onRowsChange={(next) => resizeGrid(next, cols)}
+              onColsChange={(next) => resizeGrid(rows, next)}
+              onCellFile={onCellFile}
             />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center">
-              <Mountain
-                className="size-8 text-muted-foreground/50"
-                aria-hidden="true"
-              />
-              <p className="text-sm font-medium text-foreground">
-                No terrain rendered yet
+            <ModelPolygonTable
+              rows={polygons}
+              onNameChange={(id, name) => updatePolygon(id, { name })}
+              onTypeChange={(id, type) => updatePolygon(id, { type })}
+              onGeoJsonFile={(id, file) =>
+                updatePolygon(id, {
+                  geojson: file ? { file, name: file.name } : null,
+                })
+              }
+              onAddRow={() =>
+                setPolygons((prev) => [...prev, newPolygonRow()])
+              }
+              onRemoveRow={(id) =>
+                setPolygons((prev) =>
+                  prev.length <= 1
+                    ? prev
+                    : prev.filter((row) => row.id !== id),
+                )
+              }
+            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-muted-foreground">
+                Heights are treated as EGM2008 orthometric elevations and applied
+                directly as mesh elevations (no geoid-to-ellipsoid conversion).
+                Polygon Y is sampled from the same TIF surface.
               </p>
-              <p className="max-w-sm text-xs text-muted-foreground">
-                Upload GeoTIFF tiles in the Data tab and click Render to stitch
-                them into a 3D terrain model.
-              </p>
+              <Button
+                type="button"
+                className="shrink-0 self-end sm:self-auto"
+                disabled={!hasFile || rendering}
+                onClick={() => {
+                  void onRender()
+                }}
+              >
+                {rendering ? 'Rendering…' : 'Render'}
+              </Button>
             </div>
-          )}
-        </TabsContent>
+            {error ? (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="relative min-h-[min(70vh,720px)] flex-1 overflow-hidden rounded-md border border-border/60 pt-0">
+            {dem ? (
+              <ModelTerrainCanvas
+                dem={dem}
+                overlays={overlays}
+                sceneKey={`${sceneEpoch}-${dem.cols}x${dem.rows}-${overlays.length}`}
+              />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center">
+                <Mountain
+                  className="size-8 text-muted-foreground/50"
+                  aria-hidden="true"
+                />
+                <p className="text-sm font-medium text-foreground">
+                  No terrain rendered yet
+                </p>
+                <p className="max-w-sm text-xs text-muted-foreground">
+                  Upload GeoTIFF tiles in the Data tab and click Render to stitch
+                  them into a 3D terrain model.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </Tabs>
     </div>
   )
