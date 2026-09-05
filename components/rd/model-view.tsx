@@ -1,8 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Mountain } from 'lucide-react'
 
+import {
+  ModelOrthophotoTable,
+  type OrthophotoRow,
+} from '@/components/rd/model-orthophoto-table'
 import {
   ModelPolygonTable,
   type PolygonRow,
@@ -12,6 +16,14 @@ import { ModelTifTable, type TifCellFile } from '@/components/rd/model-tif-table
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { parseElevationGeoTiffs } from '@/lib/rd/model-geotiff'
+import {
+  isValidOrthophotoBounds,
+  parseCoordinate,
+  prepareOrthophotoImageUrl,
+  revokeOrthophotoObjectUrl,
+  revokeOrthophotoObjectUrlsDeferred,
+  type ModelOrthophotoOverlay,
+} from '@/lib/rd/model-orthophoto'
 import {
   isPolygonType,
   parseGeoJsonFile,
@@ -40,8 +52,30 @@ function newPolygonRow(): PolygonRow {
   }
 }
 
+function newOrthophotoRow(): OrthophotoRow {
+  return {
+    id: `ortho-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    file: null,
+    swLon: '',
+    swLat: '',
+    neLon: '',
+    neLat: '',
+  }
+}
+
 const INITIAL_POLYGON_ROWS: PolygonRow[] = [
   { id: 'poly-1', name: '', type: '', geojson: null },
+]
+
+const INITIAL_ORTHOPHOTO_ROWS: OrthophotoRow[] = [
+  {
+    id: 'ortho-1',
+    file: null,
+    swLon: '',
+    swLat: '',
+    neLon: '',
+    neLat: '',
+  },
 ]
 
 function isCompletePolygonRow(
@@ -57,17 +91,54 @@ function isCompletePolygonRow(
   )
 }
 
+function isCompleteOrthophotoRow(
+  row: OrthophotoRow,
+): row is OrthophotoRow & {
+  file: { file: File; name: string }
+} {
+  if (row.file === null) return false
+  const swLon = parseCoordinate(row.swLon)
+  const swLat = parseCoordinate(row.swLat)
+  const neLon = parseCoordinate(row.neLon)
+  const neLat = parseCoordinate(row.neLat)
+  if (
+    swLon === null ||
+    swLat === null ||
+    neLon === null ||
+    neLat === null
+  ) {
+    return false
+  }
+  return isValidOrthophotoBounds(swLon, swLat, neLon, neLat)
+}
+
 export function ModelView() {
   const [tab, setTab] = useState<TabValue>('data')
   const [rows, setRows] = useState(2)
   const [cols, setCols] = useState(2)
   const [cells, setCells] = useState<TifCellFile[]>(() => emptyCells(4))
   const [polygons, setPolygons] = useState<PolygonRow[]>(INITIAL_POLYGON_ROWS)
+  const [orthophotos, setOrthophotos] = useState<OrthophotoRow[]>(
+    INITIAL_ORTHOPHOTO_ROWS,
+  )
   const [rendering, setRendering] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dem, setDem] = useState<ModelDemGrid | null>(null)
   const [overlays, setOverlays] = useState<ModelPolygonOverlay[]>([])
+  const [orthoOverlays, setOrthoOverlays] = useState<ModelOrthophotoOverlay[]>(
+    [],
+  )
   const [sceneEpoch, setSceneEpoch] = useState(0)
+  const orthoOverlaysRef = useRef(orthoOverlays)
+  orthoOverlaysRef.current = orthoOverlays
+
+  useEffect(() => {
+    return () => {
+      for (const overlay of orthoOverlaysRef.current) {
+        revokeOrthophotoObjectUrl(overlay.imageUrl)
+      }
+    }
+  }, [])
 
   const hasFile = cells.some((cell) => cell !== null)
 
@@ -104,6 +175,16 @@ export function ModelView() {
     setError(null)
   }
 
+  function updateOrthophoto(
+    id: string,
+    patch: Partial<Omit<OrthophotoRow, 'id'>>,
+  ) {
+    setOrthophotos((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    )
+    setError(null)
+  }
+
   async function onRender() {
     const entries = cells
       .map((cell, index) =>
@@ -121,9 +202,25 @@ export function ModelView() {
       return
     }
 
+    // Surface partially-filled orthophoto rows before building the mosaic.
+    for (const row of orthophotos) {
+      const hasAny =
+        row.file !== null ||
+        row.swLon.trim() !== '' ||
+        row.swLat.trim() !== '' ||
+        row.neLon.trim() !== '' ||
+        row.neLat.trim() !== ''
+      if (!hasAny || isCompleteOrthophotoRow(row)) continue
+      setError(
+        'Complete each orthophoto row (file + SW/NE lon/lat with east > west and north > south), or clear it.',
+      )
+      return
+    }
+
     setRendering(true)
     setError(null)
 
+    const nextOrthoOverlays: ModelOrthophotoOverlay[] = []
     try {
       const tiles = await parseElevationGeoTiffs(entries)
       const mosaic = buildElevationMosaic(tiles)
@@ -149,11 +246,44 @@ export function ModelView() {
         }
       }
 
+      for (const row of orthophotos) {
+        if (!isCompleteOrthophotoRow(row)) continue
+        const swLon = parseCoordinate(row.swLon)!
+        const swLat = parseCoordinate(row.swLat)!
+        const neLon = parseCoordinate(row.neLon)!
+        const neLat = parseCoordinate(row.neLat)!
+        try {
+          const imageUrl = await prepareOrthophotoImageUrl(row.file.file)
+          nextOrthoOverlays.push({
+            id: row.id,
+            name: row.file.name,
+            imageUrl,
+            southwest: [swLon, swLat],
+            northeast: [neLon, neLat],
+          })
+        } catch (err) {
+          const message =
+            err instanceof Error
+              ? err.message
+              : `Failed to load orthophoto "${row.file.name}".`
+          throw new Error(message)
+        }
+      }
+
+      const previousOrthoUrls = orthoOverlaysRef.current.map(
+        (overlay) => overlay.imageUrl,
+      )
+      setOrthoOverlays(nextOrthoOverlays)
       setDem(nextDem)
       setOverlays(nextOverlays)
       setSceneEpoch((n) => n + 1)
       setTab('rendering')
+      // Revoke after the old Canvas/textures unmount — immediate revoke crashes GL.
+      revokeOrthophotoObjectUrlsDeferred(previousOrthoUrls)
     } catch (err) {
+      for (const overlay of nextOrthoOverlays) {
+        revokeOrthophotoObjectUrl(overlay.imageUrl)
+      }
       const message =
         err instanceof Error ? err.message : 'Failed to build terrain mosaic.'
       setError(message)
@@ -214,11 +344,30 @@ export function ModelView() {
                 )
               }
             />
+            <ModelOrthophotoTable
+              rows={orthophotos}
+              onFileChange={(id, file) =>
+                updateOrthophoto(id, {
+                  file: file ? { file, name: file.name } : null,
+                })
+              }
+              onBoundsChange={(id, patch) => updateOrthophoto(id, patch)}
+              onAddRow={() =>
+                setOrthophotos((prev) => [...prev, newOrthophotoRow()])
+              }
+              onRemoveRow={(id) =>
+                setOrthophotos((prev) =>
+                  prev.length <= 1
+                    ? prev
+                    : prev.filter((row) => row.id !== id),
+                )
+              }
+            />
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-muted-foreground">
                 Heights are treated as EGM2008 orthometric elevations and applied
                 directly as mesh elevations (no geoid-to-ellipsoid conversion).
-                Polygon Y is sampled from the same TIF surface.
+                Polygons and orthophotos are draped from the same TIF surface.
               </p>
               <Button
                 type="button"
@@ -243,7 +392,8 @@ export function ModelView() {
               <ModelTerrainCanvas
                 dem={dem}
                 overlays={overlays}
-                sceneKey={`${sceneEpoch}-${dem.cols}x${dem.rows}-${overlays.length}`}
+                orthophotos={orthoOverlays}
+                sceneKey={`${sceneEpoch}-${dem.cols}x${dem.rows}-${overlays.length}-${orthoOverlays.length}`}
               />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center">

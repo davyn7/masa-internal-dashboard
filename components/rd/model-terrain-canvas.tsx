@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import { useEffect, useState } from 'react'
 
 import { Skeleton } from '@/components/ui/skeleton'
+import type { ModelOrthophotoOverlay } from '@/lib/rd/model-orthophoto'
 import type { ModelPolygonOverlay } from '@/lib/rd/model-polygons'
 import type { ModelDemGrid } from '@/lib/rd/model-terrain'
 
@@ -23,10 +24,12 @@ const ModelTerrainScene = dynamic(
 export function ModelTerrainCanvas({
   dem,
   overlays,
+  orthophotos,
   sceneKey,
 }: {
   dem: ModelDemGrid
   overlays: ModelPolygonOverlay[]
+  orthophotos: ModelOrthophotoOverlay[]
   /** Bumps on each Render so the scene remounts with a fresh GL context. */
   sceneKey: string | number
 }) {
@@ -53,6 +56,7 @@ export function ModelTerrainCanvas({
           key={sceneKey}
           dem={dem}
           overlays={overlays}
+          orthophotos={orthophotos}
         />
       ) : (
         <Skeleton className="absolute inset-0 h-full w-full rounded-none" />

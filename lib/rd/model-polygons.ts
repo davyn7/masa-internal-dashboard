@@ -231,6 +231,7 @@ export async function parseGeoJsonFile(file: File): Promise<LonLat[][]> {
 export function densifyLocalRing(
   vertices: readonly LocalVertex[],
   step: number,
+  maxVertices = 12_000,
 ): LocalVertex[] {
   const out: LocalVertex[] = []
   const n = vertices.length
@@ -248,5 +249,13 @@ export function densifyLocalRing(
       })
     }
   }
-  return out
+
+  if (out.length <= maxVertices) return out
+  // Subsample evenly so huge AOI rings cannot allocate millions of verts.
+  const stride = Math.ceil(out.length / maxVertices)
+  const sampled: LocalVertex[] = []
+  for (let i = 0; i < out.length; i += stride) {
+    sampled.push(out[i])
+  }
+  return sampled.length >= 3 ? sampled : out.slice(0, maxVertices)
 }

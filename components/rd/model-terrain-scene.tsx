@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -23,6 +24,7 @@ import { RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
 
+import type { ModelOrthophotoOverlay } from '@/lib/rd/model-orthophoto'
 import {
   densifyLocalRing,
   localRingArea,
@@ -39,10 +41,18 @@ import {
 } from '@/lib/rd/model-terrain'
 
 const V_EXAG = 1.4
-/** Lift draped overlays slightly above the terrain mesh (orthometric meters). */
-const POLY_OFFSET_M = 1.5
+/** Lift draped orthophotos above the terrain mesh (orthometric meters). */
+const ORTHO_OFFSET_M = 3
+/** Lift draped polygon overlays above orthophotos (orthometric meters). */
+const POLY_OFFSET_M = 5
 /** Extra lift so nested non-IUP hit meshes win raycasts over the parent IUP. */
 const CHILD_HIT_BIAS_M = 0.08
+
+/** renderOrder stack: terrain < orthophoto < polygon fill < polygon line */
+const RENDER_ORDER_TERRAIN = 0
+const RENDER_ORDER_ORTHO = 1
+const RENDER_ORDER_POLY_FILL = 2
+const RENDER_ORDER_POLY_LINE = 3
 
 const AXIS_X = '#c45c4a'
 const AXIS_Y = '#6aa88a'
@@ -188,12 +198,17 @@ function TerrainMesh({ dem }: { dem: ModelDemGrid }) {
   }, [geometry])
 
   return (
-    <mesh geometry={geometry as THREE.BufferGeometry}>
+    <mesh
+      geometry={geometry as THREE.BufferGeometry}
+      renderOrder={RENDER_ORDER_TERRAIN}
+    >
       <meshStandardMaterial
         vertexColors
         roughness={0.92}
         metalness={0.02}
         side={THREE.DoubleSide}
+        depthWrite
+        depthTest
       />
     </mesh>
   )
@@ -214,6 +229,205 @@ function elevateLocalPoint(
 ): [number, number, number] {
   const elev = sampleModelElevation(dem, x, y) + offsetM
   return worldPos(x, elev, y)
+}
+
+/**
+ * Build a textured mesh covering an orthophoto footprint using the exact DEM
+ * grid vertices and triangle split as the terrain mesh, so the surfaces stay
+ * parallel after a constant vertical offset (no mid-cell topography poke-through).
+ */
+function buildDrapedOrthophotoGeometry(
+  dem: ModelDemGrid,
+  southwest: [number, number],
+  northeast: [number, number],
+  offsetM = ORTHO_OFFSET_M,
+): THREE.BufferGeometry | null {
+  const [west, south] = southwest
+  const [east, north] = northeast
+  if (!(east > west && north > south)) return null
+
+  const sw = lonLatToLocal(dem, west, south)
+  const ne = lonLatToLocal(dem, east, north)
+  const minX = Math.min(sw.x, ne.x)
+  const maxX = Math.max(sw.x, ne.x)
+  const minY = Math.min(sw.y, ne.y)
+  const maxY = Math.max(sw.y, ne.y)
+
+  const c0 = Math.max(0, Math.floor((minX - dem.originX) / dem.cellSizeX))
+  const c1 = Math.min(
+    dem.cols - 1,
+    Math.ceil((maxX - dem.originX) / dem.cellSizeX),
+  )
+  const r0 = Math.max(0, Math.floor((minY - dem.originY) / dem.cellSizeY))
+  const r1 = Math.min(
+    dem.rows - 1,
+    Math.ceil((maxY - dem.originY) / dem.cellSizeY),
+  )
+  if (c1 <= c0 || r1 <= r0) return null
+
+  const cols = c1 - c0 + 1
+  const rows = r1 - r0 + 1
+  const lonSpan = east - west
+  const latSpan = north - south
+  const positions = new Float32Array(cols * rows * 3)
+  const uvs = new Float32Array(cols * rows * 2)
+
+  for (let r = 0; r < rows; r++) {
+    const demRow = r0 + r
+    const y = dem.originY + demRow * dem.cellSizeY
+    const lat = dem.south + (y - dem.originY) / dem.metersPerDegLat
+    for (let c = 0; c < cols; c++) {
+      const demCol = c0 + c
+      const x = dem.originX + demCol * dem.cellSizeX
+      const lon = dem.west + (x - dem.originX) / dem.metersPerDegLon
+      const elev = dem.elevations[demRow * dem.cols + demCol] + offsetM
+      const i = r * cols + c
+      const [wx, wy, wz] = worldPos(x, elev, y)
+      positions[i * 3] = wx
+      positions[i * 3 + 1] = wy
+      positions[i * 3 + 2] = wz
+      // flipY=true textures: v=0 is image bottom → geographic south.
+      uvs[i * 2] = (lon - west) / lonSpan
+      uvs[i * 2 + 1] = (lat - south) / latSpan
+    }
+  }
+
+  // Same diagonal split as buildTerrainGeometry.
+  const indices = new Uint32Array((cols - 1) * (rows - 1) * 6)
+  let iIdx = 0
+  for (let r = 0; r < rows - 1; r++) {
+    for (let c = 0; c < cols - 1; c++) {
+      const a = r * cols + c
+      const b = a + 1
+      const d = a + cols
+      const e = d + 1
+      indices[iIdx++] = a
+      indices[iIdx++] = d
+      indices[iIdx++] = b
+      indices[iIdx++] = b
+      indices[iIdx++] = d
+      indices[iIdx++] = e
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1))
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+function TerrainOrthophoto({
+  dem,
+  overlay,
+  visible,
+}: {
+  dem: ModelDemGrid
+  overlay: ModelOrthophotoOverlay
+  visible: boolean
+}) {
+  const [texture, setTexture] = useState<THREE.Texture | null>(null)
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    let owned: THREE.Texture | null = null
+    const loader = new THREE.TextureLoader()
+    loader.load(
+      overlay.imageUrl,
+      (loaded) => {
+        if (cancelled) {
+          loaded.dispose()
+          return
+        }
+        loaded.colorSpace = THREE.SRGBColorSpace
+        loaded.anisotropy = 4
+        loaded.wrapS = THREE.ClampToEdgeWrapping
+        loaded.wrapT = THREE.ClampToEdgeWrapping
+        loaded.needsUpdate = true
+        owned = loaded
+        setTexture(loaded)
+      },
+      undefined,
+      () => {
+        // Corrupt / revoked URL — skip this orthophoto instead of crashing.
+        if (!cancelled) setTexture(null)
+      },
+    )
+    return () => {
+      cancelled = true
+      owned?.dispose()
+      owned = null
+      setTexture(null)
+    }
+  }, [overlay.imageUrl])
+
+  useLayoutEffect(() => {
+    const material = materialRef.current
+    if (!material) return
+    material.map = texture
+    material.needsUpdate = true
+  }, [texture])
+
+  const geometry = useMemo(
+    () =>
+      buildDrapedOrthophotoGeometry(
+        dem,
+        overlay.southwest,
+        overlay.northeast,
+      ),
+    [dem, overlay.southwest, overlay.northeast],
+  )
+
+  useLayoutEffect(() => {
+    return () => {
+      geometry?.dispose()
+    }
+  }, [geometry])
+
+  if (!geometry || !texture) return null
+
+  return (
+    <mesh
+      geometry={geometry as THREE.BufferGeometry}
+      renderOrder={RENDER_ORDER_ORTHO}
+      visible={visible}
+    >
+      <meshStandardMaterial
+        ref={materialRef}
+        roughness={0.95}
+        metalness={0}
+        side={THREE.DoubleSide}
+        depthWrite
+        depthTest
+      />
+    </mesh>
+  )
+}
+
+function TerrainOrthophotos({
+  dem,
+  orthophotos,
+  visible,
+}: {
+  dem: ModelDemGrid
+  orthophotos: ModelOrthophotoOverlay[]
+  visible: boolean
+}) {
+  if (orthophotos.length === 0) return null
+  return (
+    <group>
+      {orthophotos.map((overlay) => (
+        <TerrainOrthophoto
+          key={overlay.id}
+          dem={dem}
+          overlay={overlay}
+          visible={visible}
+        />
+      ))}
+    </group>
+  )
 }
 
 /**
@@ -462,7 +676,7 @@ function TerrainPolygon({
             color={style.boundary}
             lineWidth={hoverEnabled && primaryHovered ? 3 : 2}
             depthTest
-            renderOrder={2}
+            renderOrder={RENDER_ORDER_POLY_LINE}
           />
         ) : null,
       )}
@@ -470,7 +684,9 @@ function TerrainPolygon({
         <mesh
           key={`${overlay.id}-fill-${i}`}
           geometry={geometry as THREE.BufferGeometry}
-          renderOrder={isIup ? 1 : 2}
+          renderOrder={
+            isIup ? RENDER_ORDER_POLY_FILL : RENDER_ORDER_POLY_FILL + 1
+          }
         >
           <meshBasicMaterial
             color={style.fill}
@@ -806,15 +1022,19 @@ function CompassOverlay({
 export function ModelTerrainScene({
   dem,
   overlays,
+  orthophotos,
 }: {
   dem: ModelDemGrid
   overlays: ModelPolygonOverlay[]
+  orthophotos: ModelOrthophotoOverlay[]
 }) {
   const frame = useMemo(() => frameFromDem(dem), [dem])
   const roseRef = useRef<HTMLDivElement>(null)
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const [hoveredLabel, setHoveredLabel] = useState<string | null>(null)
   const [hoverEnabled, setHoverEnabled] = useState(false)
+  const [orthoVisible, setOrthoVisible] = useState(true)
+  const [polygonsVisible, setPolygonsVisible] = useState(true)
 
   function resetView() {
     const controls = controlsRef.current
@@ -824,6 +1044,9 @@ export function ModelTerrainScene({
     controls.target.set(frame.target[0], frame.target[1], frame.target[2])
     controls.update()
   }
+
+  const toggleClassName =
+    'pointer-events-auto border-white/15 bg-[#10161c]/85 text-[#e8eef2] hover:bg-[#10161c] hover:text-[#e8eef2] aria-pressed:bg-[#e8eef2]/15 aria-pressed:text-[#e8eef2]'
 
   return (
     <div className="absolute inset-0">
@@ -841,14 +1064,37 @@ export function ModelTerrainScene({
         <Toggle
           size="sm"
           variant="outline"
+          pressed={orthoVisible}
+          onPressedChange={setOrthoVisible}
+          disabled={orthophotos.length === 0}
+          aria-label="Toggle orthophoto layer"
+          className={toggleClassName}
+        >
+          Ortho
+        </Toggle>
+        <Toggle
+          size="sm"
+          variant="outline"
+          pressed={polygonsVisible}
+          onPressedChange={setPolygonsVisible}
+          disabled={overlays.length === 0}
+          aria-label="Toggle polygon layer"
+          className={toggleClassName}
+        >
+          Polygons
+        </Toggle>
+        <Toggle
+          size="sm"
+          variant="outline"
           pressed={hoverEnabled}
           onPressedChange={setHoverEnabled}
+          disabled={!polygonsVisible || overlays.length === 0}
           aria-label="Toggle polygon hover highlights"
-          className="pointer-events-auto border-white/15 bg-[#10161c]/85 text-[#e8eef2] hover:bg-[#10161c] hover:text-[#e8eef2] aria-pressed:bg-[#e8eef2]/15 aria-pressed:text-[#e8eef2]"
+          className={toggleClassName}
         >
           Hover
         </Toggle>
-        {hoverEnabled && hoveredLabel ? (
+        {polygonsVisible && hoverEnabled && hoveredLabel ? (
           <div className="rounded-md bg-card/95 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-card-foreground shadow-sm ring-1 ring-foreground/10">
             {hoveredLabel}
           </div>
@@ -864,8 +1110,16 @@ export function ModelTerrainScene({
           far: frame.far,
         }}
         dpr={[1, 1.5]}
-        gl={{ antialias: true }}
+        gl={{ antialias: true, powerPreference: 'high-performance' }}
         resize={{ debounce: 0, scroll: false }}
+        onCreated={({ gl }) => {
+          const canvas = gl.domElement
+          const onLost = (event: Event) => {
+            // Allow the browser to restore the context instead of hard-failing.
+            event.preventDefault()
+          }
+          canvas.addEventListener('webglcontextlost', onLost, false)
+        }}
       >
         <color attach="background" args={['#10161c']} />
         <fog attach="fog" args={['#10161c', frame.fogNear, frame.fogFar]} />
@@ -888,12 +1142,19 @@ export function ModelTerrainScene({
         />
 
         <TerrainMesh dem={dem} />
-        <TerrainPolygons
+        <TerrainOrthophotos
           dem={dem}
-          overlays={overlays}
-          hoverEnabled={hoverEnabled}
-          onHoveredLabel={setHoveredLabel}
+          orthophotos={orthophotos}
+          visible={orthoVisible}
         />
+        <group visible={polygonsVisible}>
+          <TerrainPolygons
+            dem={dem}
+            overlays={overlays}
+            hoverEnabled={polygonsVisible && hoverEnabled}
+            onHoveredLabel={setHoveredLabel}
+          />
+        </group>
         <GraduatedAxes dem={dem} labelSize={frame.labelSize} />
         <CompassDriver roseRef={roseRef} />
 
