@@ -132,10 +132,62 @@ export type ModelDemGrid = {
   originX: number
   /** Local northing of row 0 / south edge (typically centered). */
   originY: number
-  /** Row-major, south→north (row 0 = south). */
+  /** Row-major, south→north (row 0 = south). EGM2008 orthometric meters. */
   elevations: Float32Array
   minElevation: number
   maxElevation: number
+  /** Geographic bounds (degrees) matching the source mosaic. */
+  west: number
+  south: number
+  east: number
+  north: number
+  metersPerDegLon: number
+  metersPerDegLat: number
+}
+
+export type LocalXY = { x: number; y: number }
+
+/**
+ * Map WGS84 lon/lat into the DEM local meter frame (X east, Y north).
+ */
+export function lonLatToLocal(
+  dem: ModelDemGrid,
+  lon: number,
+  lat: number,
+): LocalXY {
+  return {
+    x: dem.originX + (lon - dem.west) * dem.metersPerDegLon,
+    y: dem.originY + (lat - dem.south) * dem.metersPerDegLat,
+  }
+}
+
+/**
+ * Bilinear sample of EGM2008 orthometric elevation (meters) at local XY.
+ */
+export function sampleModelElevation(
+  dem: ModelDemGrid,
+  x: number,
+  y: number,
+): number {
+  const fx = (x - dem.originX) / dem.cellSizeX
+  const fy = (y - dem.originY) / dem.cellSizeY
+  const c0 = Math.floor(fx)
+  const r0 = Math.floor(fy)
+  const tx = fx - c0
+  const ty = fy - r0
+
+  const at = (c: number, r: number) => {
+    const cc = Math.min(dem.cols - 1, Math.max(0, c))
+    const rr = Math.min(dem.rows - 1, Math.max(0, r))
+    return dem.elevations[rr * dem.cols + cc]
+  }
+
+  return (
+    at(c0, r0) * (1 - tx) * (1 - ty) +
+    at(c0 + 1, r0) * tx * (1 - ty) +
+    at(c0, r0 + 1) * (1 - tx) * ty +
+    at(c0 + 1, r0 + 1) * tx * ty
+  )
 }
 
 /**
@@ -211,5 +263,11 @@ export function mosaicToDemGrid(mosaic: ElevationMosaic): ModelDemGrid {
     elevations,
     minElevation,
     maxElevation,
+    west,
+    south,
+    east,
+    north,
+    metersPerDegLon,
+    metersPerDegLat,
   }
 }

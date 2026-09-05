@@ -11,9 +11,20 @@ import {
 } from '@react-three/drei'
 import * as THREE from 'three'
 
-import type { ModelDemGrid } from '@/lib/rd/model-terrain'
+import {
+  densifyLocalRing,
+  POLYGON_STYLES,
+  type ModelPolygonOverlay,
+} from '@/lib/rd/model-polygons'
+import {
+  lonLatToLocal,
+  sampleModelElevation,
+  type ModelDemGrid,
+} from '@/lib/rd/model-terrain'
 
 const V_EXAG = 1.4
+/** Lift draped overlays slightly above the terrain mesh (orthometric meters). */
+const POLY_OFFSET_M = 1.5
 
 const AXIS_X = '#c45c4a'
 const AXIS_Y = '#6aa88a'
@@ -21,6 +32,16 @@ const AXIS_Z = '#5aa7c4'
 
 function elevY(z: number) {
   return z * V_EXAG
+}
+
+/** Local east/north (m) + orthometric elev → Three.js world (X east, Y up, Z north). */
+function worldPos(
+  localX: number,
+  elevationM: number,
+  localNorthing: number,
+): [number, number, number] {
+  // Negate northing: DEM local +Y was mapping to world +Z as south on screen.
+  return [localX, elevY(elevationM), -localNorthing]
 }
 
 function terrainColor(
@@ -78,11 +99,12 @@ function buildTerrainGeometry(dem: ModelDemGrid) {
     for (let c = 0; c < cols; c++) {
       const i = r * cols + c
       const x = originX + c * cellSizeX
-      const y = originY + r * cellSizeY
+      const northing = originY + r * cellSizeY
       const z = elevations[i]
-      positions[i * 3] = x
-      positions[i * 3 + 1] = elevY(z)
-      positions[i * 3 + 2] = y
+      const [wx, wy, wz] = worldPos(x, z, northing)
+      positions[i * 3] = wx
+      positions[i * 3 + 1] = wy
+      positions[i * 3 + 2] = wz
       terrainColor(z, minElevation, maxElevation, color)
       colors[i * 3] = color.r
       colors[i * 3 + 1] = color.g
@@ -159,6 +181,150 @@ function TerrainMesh({ dem }: { dem: ModelDemGrid }) {
   )
 }
 
+function densifyStepForDem(dem: ModelDemGrid): number {
+  return Math.max(
+    Math.min(dem.cellSizeX, dem.cellSizeY) * 0.75,
+    2,
+  )
+}
+
+function buildDrapedFillGeometry(
+  dem: ModelDemGrid,
+  ring: { x: number; y: number }[],
+): THREE.BufferGeometry | null {
+  if (ring.length < 3) return null
+
+  const contour = ring.map((p) => new THREE.Vector2(p.x, p.y))
+  let faces: number[][]
+  try {
+    faces = THREE.ShapeUtils.triangulateShape(contour, [])
+  } catch {
+    return null
+  }
+  if (faces.length === 0) return null
+
+  const positions = new Float32Array(ring.length * 3)
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i]
+    const elev = sampleModelElevation(dem, p.x, p.y) + POLY_OFFSET_M
+    const [wx, wy, wz] = worldPos(p.x, elev, p.y)
+    positions[i * 3] = wx
+    positions[i * 3 + 1] = wy
+    positions[i * 3 + 2] = wz
+  }
+
+  const indices = new Uint32Array(faces.length * 3)
+  let iIdx = 0
+  for (const face of faces) {
+    indices[iIdx++] = face[0]
+    indices[iIdx++] = face[1]
+    indices[iIdx++] = face[2]
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1))
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+function TerrainPolygon({
+  dem,
+  overlay,
+}: {
+  dem: ModelDemGrid
+  overlay: ModelPolygonOverlay
+}) {
+  const style = POLYGON_STYLES[overlay.type]
+  const step = densifyStepForDem(dem)
+
+  const localRings = useMemo(
+    () =>
+      overlay.rings.map((ring) =>
+        densifyLocalRing(
+          ring.map(([lon, lat]) => lonLatToLocal(dem, lon, lat)),
+          step,
+        ),
+      ),
+    [dem, overlay.rings, step],
+  )
+
+  const linePointSets = useMemo(
+    () =>
+      localRings.map((ring) => {
+        if (ring.length === 0) return [] as [number, number, number][]
+        const closed = [...ring, ring[0]]
+        return closed.map((p) => {
+          const elev = sampleModelElevation(dem, p.x, p.y) + POLY_OFFSET_M
+          return worldPos(p.x, elev, p.y)
+        })
+      }),
+    [dem, localRings],
+  )
+
+  const fillGeometries = useMemo(() => {
+    if (!style.fill) return [] as THREE.BufferGeometry[]
+    return localRings
+      .map((ring) => buildDrapedFillGeometry(dem, ring))
+      .filter((g): g is THREE.BufferGeometry => g !== null)
+  }, [dem, localRings, style.fill])
+
+  useLayoutEffect(() => {
+    return () => {
+      for (const g of fillGeometries) g.dispose()
+    }
+  }, [fillGeometries])
+
+  return (
+    <group>
+      {linePointSets.map((points, i) =>
+        points.length >= 2 ? (
+          <Line
+            key={`${overlay.id}-line-${i}`}
+            points={points}
+            color={style.boundary}
+            lineWidth={2}
+            depthTest
+            renderOrder={2}
+          />
+        ) : null,
+      )}
+      {fillGeometries.map((geometry, i) => (
+        <mesh
+          key={`${overlay.id}-fill-${i}`}
+          geometry={geometry as THREE.BufferGeometry}
+          renderOrder={1}
+        >
+          <meshBasicMaterial
+            color={style.fill!}
+            transparent
+            opacity={style.fillOpacity}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function TerrainPolygons({
+  dem,
+  overlays,
+}: {
+  dem: ModelDemGrid
+  overlays: ModelPolygonOverlay[]
+}) {
+  if (overlays.length === 0) return null
+  return (
+    <group>
+      {overlays.map((overlay) => (
+        <TerrainPolygon key={overlay.id} dem={dem} overlay={overlay} />
+      ))}
+    </group>
+  )
+}
+
 type AxisPlan = {
   axisPoints: [number, number, number][]
   ticks: {
@@ -173,41 +339,44 @@ type AxisPlan = {
 
 function buildAxisPlans(dem: ModelDemGrid, labelSize: number): AxisPlan[] {
   const x0 = dem.originX
-  const z0 = dem.originY
+  const nSouth = dem.originY
   const x1 = dem.originX + (dem.cols - 1) * dem.cellSizeX
-  const z1 = dem.originY + (dem.rows - 1) * dem.cellSizeY
+  const nNorth = dem.originY + (dem.rows - 1) * dem.cellSizeY
+  const zSouth = -nSouth
+  const zNorth = -nNorth
   const y0 = elevY(dem.minElevation)
   const y1 = elevY(dem.maxElevation)
   const widthM = x1 - x0
-  const depthM = z1 - z0
+  const depthM = nNorth - nSouth
   const heightM = Math.max(y1 - y0, 1)
   const stepX = niceStep(widthM, 5)
   const stepZ = niceStep(depthM, 5)
   const stepY = niceStep(heightM / V_EXAG, 5)
   const tickLen = Math.max(Math.min(widthM, depthM) * 0.02, 2)
+  const zSign = zNorth >= zSouth ? 1 : -1
 
   const xTicks: AxisPlan['ticks'] = []
   for (let x = 0; x <= widthM + stepX * 0.01; x += stepX) {
     const wx = x0 + x
     xTicks.push({
       points: [
-        [wx, y0, z0],
-        [wx, y0, z0 - tickLen],
+        [wx, y0, zSouth],
+        [wx, y0, zSouth - tickLen * zSign],
       ],
       label: formatTick(x, stepX),
-      labelPos: [wx, y0 - labelSize * 0.4, z0 - tickLen * 2.2],
+      labelPos: [wx, y0 - labelSize * 0.4, zSouth - tickLen * 2.2 * zSign],
     })
   }
 
   const zTicks: AxisPlan['ticks'] = []
-  for (let z = 0; z <= depthM + stepZ * 0.01; z += stepZ) {
-    const wz = z0 + z
+  for (let n = 0; n <= depthM + stepZ * 0.01; n += stepZ) {
+    const wz = -(nSouth + n)
     zTicks.push({
       points: [
         [x0, y0, wz],
         [x0 - tickLen, y0, wz],
       ],
-      label: formatTick(z, stepZ),
+      label: formatTick(n, stepZ),
       labelPos: [x0 - tickLen * 2.2, y0 - labelSize * 0.4, wz],
     })
   }
@@ -221,43 +390,43 @@ function buildAxisPlans(dem: ModelDemGrid, labelSize: number): AxisPlan[] {
     const wy = elevY(elev)
     yTicks.push({
       points: [
-        [x0, wy, z0],
-        [x0 - tickLen, wy, z0],
+        [x0, wy, zSouth],
+        [x0 - tickLen, wy, zSouth],
       ],
       label: formatTick(elev, stepY),
-      labelPos: [x0 - tickLen * 2.4, wy, z0],
+      labelPos: [x0 - tickLen * 2.4, wy, zSouth],
     })
   }
 
   return [
     {
       axisPoints: [
-        [x0, y0, z0],
-        [x1, y0, z0],
+        [x0, y0, zSouth],
+        [x1, y0, zSouth],
       ],
       ticks: xTicks,
       endLabel: 'X (E)',
-      endPos: [x1 + labelSize * 1.2, y0, z0],
+      endPos: [x1 + labelSize * 1.2, y0, zSouth],
       color: AXIS_X,
     },
     {
       axisPoints: [
-        [x0, y0, z0],
-        [x0, y1, z0],
+        [x0, y0, zSouth],
+        [x0, y1, zSouth],
       ],
       ticks: yTicks,
       endLabel: 'Y (elev)',
-      endPos: [x0, y1 + labelSize * 1.2, z0],
+      endPos: [x0, y1 + labelSize * 1.2, zSouth],
       color: AXIS_Y,
     },
     {
       axisPoints: [
-        [x0, y0, z0],
-        [x0, y0, z1],
+        [x0, y0, zSouth],
+        [x0, y0, zNorth],
       ],
       ticks: zTicks,
       endLabel: 'Z (N)',
-      endPos: [x0, y0, z1 + labelSize * 1.2],
+      endPos: [x0, y0, zNorth + zSign * labelSize * 1.2],
       color: AXIS_Z,
     },
   ]
@@ -326,11 +495,10 @@ function CompassDriver({
     const el = roseRef.current
     if (!el) return
     camera.getWorldDirection(dir.current)
-    // +Z is north, +X is east — yaw of view direction on the ground plane
+    // After northing negation, geographic north is world -Z.
     const yawDeg = THREE.MathUtils.radToDeg(
-      Math.atan2(dir.current.x, dir.current.z),
+      Math.atan2(dir.current.x, -dir.current.z),
     )
-    // Rotate rose opposite to camera yaw so N stays toward world +Z
     el.style.transform = `rotate(${-yawDeg}deg)`
   })
 
@@ -367,7 +535,13 @@ function CompassOverlay({
   )
 }
 
-export function ModelTerrainScene({ dem }: { dem: ModelDemGrid }) {
+export function ModelTerrainScene({
+  dem,
+  overlays,
+}: {
+  dem: ModelDemGrid
+  overlays: ModelPolygonOverlay[]
+}) {
   const frame = useMemo(() => frameFromDem(dem), [dem])
   const roseRef = useRef<HTMLDivElement>(null)
 
@@ -384,6 +558,7 @@ export function ModelTerrainScene({ dem }: { dem: ModelDemGrid }) {
         }}
         dpr={[1, 1.5]}
         gl={{ antialias: true }}
+        resize={{ debounce: 0, scroll: false }}
       >
         <color attach="background" args={['#10161c']} />
         <fog attach="fog" args={['#10161c', frame.fogNear, frame.fogFar]} />
@@ -395,13 +570,18 @@ export function ModelTerrainScene({ dem }: { dem: ModelDemGrid }) {
           makeDefault
           enableDamping
           dampingFactor={0.08}
+          enablePan={false}
+          zoomToCursor={false}
           target={frame.target}
           minDistance={frame.minDistance}
           maxDistance={frame.maxDistance}
-          maxPolarAngle={Math.PI / 2.02}
+          // Rotate freely around the terrain center; tilt to side-on for cross-section.
+          minPolarAngle={0.08}
+          maxPolarAngle={Math.PI / 2}
         />
 
         <TerrainMesh dem={dem} />
+        <TerrainPolygons dem={dem} overlays={overlays} />
         <GraduatedAxes dem={dem} labelSize={frame.labelSize} />
         <CompassDriver roseRef={roseRef} />
 

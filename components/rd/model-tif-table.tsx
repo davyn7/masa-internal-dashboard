@@ -26,12 +26,9 @@ export type ModelTifTableProps = {
   rows: number
   cols: number
   cells: TifCellFile[]
-  rendering: boolean
-  error: string | null
   onRowsChange: (rows: number) => void
   onColsChange: (cols: number) => void
   onCellFile: (index: number, file: File | null) => void
-  onRender: () => void
 }
 
 function colLetter(colIndex: number): string {
@@ -52,16 +49,12 @@ export function ModelTifTable({
   rows,
   cols,
   cells,
-  rendering,
-  error,
   onRowsChange,
   onColsChange,
   onCellFile,
-  onRender,
 }: ModelTifTableProps) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const baseId = useId()
-  const hasFile = cells.some((cell) => cell !== null)
   const filledCount = cells.filter((cell) => cell !== null).length
 
   return (
@@ -120,13 +113,6 @@ export function ModelTifTable({
               </SelectContent>
             </Select>
           </div>
-          <Button
-            type="button"
-            disabled={!hasFile || rendering}
-            onClick={onRender}
-          >
-            {rendering ? 'Rendering…' : 'Render'}
-          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -216,11 +202,6 @@ export function ModelTifTable({
             )
           })}
         </div>
-        {error ? (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
-        ) : null}
       </CardContent>
     </Card>
   )
