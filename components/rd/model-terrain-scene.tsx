@@ -1,6 +1,12 @@
 'use client'
 
-import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import {
   GizmoHelper,
@@ -8,16 +14,22 @@ import {
   Line,
   OrbitControls,
   Text,
+  useCursor,
 } from '@react-three/drei'
 import { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import * as THREE from 'three'
 import { RotateCcw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Toggle } from '@/components/ui/toggle'
 
 import {
   densifyLocalRing,
+  localRingArea,
+  localRingCentroid,
+  pointInLocalPolygon,
   POLYGON_STYLES,
+  type LocalVertex,
   type ModelPolygonOverlay,
 } from '@/lib/rd/model-polygons'
 import {
@@ -29,6 +41,8 @@ import {
 const V_EXAG = 1.4
 /** Lift draped overlays slightly above the terrain mesh (orthometric meters). */
 const POLY_OFFSET_M = 1.5
+/** Extra lift so nested non-IUP hit meshes win raycasts over the parent IUP. */
+const CHILD_HIT_BIAS_M = 0.08
 
 const AXIS_X = '#c45c4a'
 const AXIS_Y = '#6aa88a'
@@ -156,7 +170,7 @@ function frameFromDem(dem: ModelDemGrid) {
   return {
     target,
     camera,
-    minDistance: span * 0.08,
+    minDistance: span * 0.02,
     maxDistance: span * 4.5,
     fogNear: span * 2.2,
     fogFar: span * 5.5,
@@ -192,66 +206,208 @@ function densifyStepForDem(dem: ModelDemGrid): number {
   )
 }
 
+function elevateLocalPoint(
+  dem: ModelDemGrid,
+  x: number,
+  y: number,
+  offsetM: number,
+): [number, number, number] {
+  const elev = sampleModelElevation(dem, x, y) + offsetM
+  return worldPos(x, elev, y)
+}
+
+/**
+ * Build a fill mesh that follows DEM elevation: tessellate onto DEM cells
+ * whose triangle centroids lie inside the ring (with a subdivided boundary
+ * triangulation fallback for polygons smaller than one cell).
+ */
 function buildDrapedFillGeometry(
   dem: ModelDemGrid,
-  ring: { x: number; y: number }[],
+  ring: LocalVertex[],
+  offsetM = POLY_OFFSET_M,
 ): THREE.BufferGeometry | null {
   if (ring.length < 3) return null
 
-  const contour = ring.map((p) => new THREE.Vector2(p.x, p.y))
-  let faces: number[][]
-  try {
-    faces = THREE.ShapeUtils.triangulateShape(contour, [])
-  } catch {
-    return null
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const p of ring) {
+    minX = Math.min(minX, p.x)
+    minY = Math.min(minY, p.y)
+    maxX = Math.max(maxX, p.x)
+    maxY = Math.max(maxY, p.y)
   }
-  if (faces.length === 0) return null
 
-  const positions = new Float32Array(ring.length * 3)
-  for (let i = 0; i < ring.length; i++) {
-    const p = ring[i]
-    const elev = sampleModelElevation(dem, p.x, p.y) + POLY_OFFSET_M
-    const [wx, wy, wz] = worldPos(p.x, elev, p.y)
+  const c0 = Math.max(0, Math.floor((minX - dem.originX) / dem.cellSizeX))
+  const c1 = Math.min(
+    dem.cols - 1,
+    Math.ceil((maxX - dem.originX) / dem.cellSizeX),
+  )
+  const r0 = Math.max(0, Math.floor((minY - dem.originY) / dem.cellSizeY))
+  const r1 = Math.min(
+    dem.rows - 1,
+    Math.ceil((maxY - dem.originY) / dem.cellSizeY),
+  )
+
+  const vertIndex = new Map<string, number>()
+  const localVerts: LocalVertex[] = []
+  const triIndices: number[] = []
+
+  function gridVert(col: number, row: number): number {
+    const key = `${col},${row}`
+    const existing = vertIndex.get(key)
+    if (existing !== undefined) return existing
+    const idx = localVerts.length
+    localVerts.push({
+      x: dem.originX + col * dem.cellSizeX,
+      y: dem.originY + row * dem.cellSizeY,
+    })
+    vertIndex.set(key, idx)
+    return idx
+  }
+
+  function emitIfInside(i0: number, i1: number, i2: number) {
+    const a = localVerts[i0]
+    const b = localVerts[i1]
+    const c = localVerts[i2]
+    const cx = (a.x + b.x + c.x) / 3
+    const cy = (a.y + b.y + c.y) / 3
+    if (!pointInLocalPolygon(cx, cy, ring)) return
+    triIndices.push(i0, i1, i2)
+  }
+
+  for (let row = r0; row < r1; row++) {
+    for (let col = c0; col < c1; col++) {
+      const i00 = gridVert(col, row)
+      const i10 = gridVert(col + 1, row)
+      const i01 = gridVert(col, row + 1)
+      const i11 = gridVert(col + 1, row + 1)
+      // Same diagonal split as the terrain mesh.
+      emitIfInside(i00, i01, i10)
+      emitIfInside(i10, i01, i11)
+    }
+  }
+
+  if (triIndices.length === 0) {
+    // Tiny polygon: subdivide a 2D boundary triangulation until edges match DEM.
+    const maxEdge = densifyStepForDem(dem)
+    const contour = ring.map((p) => new THREE.Vector2(p.x, p.y))
+    let faces: number[][]
+    try {
+      faces = THREE.ShapeUtils.triangulateShape(contour, [])
+    } catch {
+      return null
+    }
+    if (faces.length === 0) return null
+
+    localVerts.length = 0
+    for (const p of ring) localVerts.push({ x: p.x, y: p.y })
+
+    const midCache = new Map<string, number>()
+    const edgeKey = (i: number, j: number) => (i < j ? `${i}:${j}` : `${j}:${i}`)
+    const midpointIndex = (i: number, j: number) => {
+      const key = edgeKey(i, j)
+      const hit = midCache.get(key)
+      if (hit !== undefined) return hit
+      const a = localVerts[i]
+      const b = localVerts[j]
+      const idx = localVerts.length
+      localVerts.push({ x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 })
+      midCache.set(key, idx)
+      return idx
+    }
+
+    const queue: [number, number, number][] = faces.map((f) => [
+      f[0],
+      f[1],
+      f[2],
+    ])
+    const finalFaces: [number, number, number][] = []
+    const maxIters = 50_000
+    let iters = 0
+    while (queue.length > 0 && iters++ < maxIters) {
+      const [i0, i1, i2] = queue.pop()!
+      const a = localVerts[i0]
+      const b = localVerts[i1]
+      const c = localVerts[i2]
+      const e01 = Math.hypot(b.x - a.x, b.y - a.y)
+      const e12 = Math.hypot(c.x - b.x, c.y - b.y)
+      const e20 = Math.hypot(a.x - c.x, a.y - c.y)
+      const longest = Math.max(e01, e12, e20)
+      if (longest <= maxEdge) {
+        finalFaces.push([i0, i1, i2])
+        continue
+      }
+      if (e01 >= e12 && e01 >= e20) {
+        const m = midpointIndex(i0, i1)
+        queue.push([i0, m, i2], [m, i1, i2])
+      } else if (e12 >= e20) {
+        const m = midpointIndex(i1, i2)
+        queue.push([i0, i1, m], [i0, m, i2])
+      } else {
+        const m = midpointIndex(i2, i0)
+        queue.push([i0, i1, m], [m, i1, i2])
+      }
+    }
+
+    for (const [i0, i1, i2] of finalFaces) {
+      triIndices.push(i0, i1, i2)
+    }
+  }
+
+  if (triIndices.length === 0) return null
+
+  const positions = new Float32Array(localVerts.length * 3)
+  for (let i = 0; i < localVerts.length; i++) {
+    const p = localVerts[i]
+    const [wx, wy, wz] = elevateLocalPoint(dem, p.x, p.y, offsetM)
     positions[i * 3] = wx
     positions[i * 3 + 1] = wy
     positions[i * 3 + 2] = wz
   }
 
-  const indices = new Uint32Array(faces.length * 3)
-  let iIdx = 0
-  for (const face of faces) {
-    indices[iIdx++] = face[0]
-    indices[iIdx++] = face[1]
-    indices[iIdx++] = face[2]
-  }
-
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1))
+  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(triIndices), 1))
   geometry.computeVertexNormals()
   return geometry
+}
+
+function overlayLocalRings(
+  dem: ModelDemGrid,
+  overlay: ModelPolygonOverlay,
+  step: number,
+): LocalVertex[][] {
+  return overlay.rings.map((ring) =>
+    densifyLocalRing(
+      ring.map(([lon, lat]) => lonLatToLocal(dem, lon, lat)),
+      step,
+    ),
+  )
 }
 
 function TerrainPolygon({
   dem,
   overlay,
+  localRings,
+  hoverEnabled,
+  highlighted,
+  primaryHovered,
+  onHover,
 }: {
   dem: ModelDemGrid
   overlay: ModelPolygonOverlay
+  localRings: LocalVertex[][]
+  hoverEnabled: boolean
+  highlighted: boolean
+  primaryHovered: boolean
+  onHover: (id: string | null) => void
 }) {
   const style = POLYGON_STYLES[overlay.type]
-  const step = densifyStepForDem(dem)
-
-  const localRings = useMemo(
-    () =>
-      overlay.rings.map((ring) =>
-        densifyLocalRing(
-          ring.map(([lon, lat]) => lonLatToLocal(dem, lon, lat)),
-          step,
-        ),
-      ),
-    [dem, overlay.rings, step],
-  )
+  const isIup = overlay.type === 'IUP'
+  const fillOffset = isIup ? POLY_OFFSET_M : POLY_OFFSET_M + CHILD_HIT_BIAS_M
+  useCursor(hoverEnabled && primaryHovered)
 
   const linePointSets = useMemo(
     () =>
@@ -267,11 +423,11 @@ function TerrainPolygon({
   )
 
   const fillGeometries = useMemo(() => {
-    if (!style.fill) return [] as THREE.BufferGeometry[]
+    if (!hoverEnabled) return [] as THREE.BufferGeometry[]
     return localRings
-      .map((ring) => buildDrapedFillGeometry(dem, ring))
+      .map((ring) => buildDrapedFillGeometry(dem, ring, fillOffset))
       .filter((g): g is THREE.BufferGeometry => g !== null)
-  }, [dem, localRings, style.fill])
+  }, [dem, localRings, fillOffset, hoverEnabled])
 
   useLayoutEffect(() => {
     return () => {
@@ -280,14 +436,31 @@ function TerrainPolygon({
   }, [fillGeometries])
 
   return (
-    <group>
+    <group
+      onPointerOver={
+        hoverEnabled
+          ? (event) => {
+              event.stopPropagation()
+              onHover(overlay.id)
+            }
+          : undefined
+      }
+      onPointerOut={
+        hoverEnabled
+          ? (event) => {
+              event.stopPropagation()
+              onHover(null)
+            }
+          : undefined
+      }
+    >
       {linePointSets.map((points, i) =>
         points.length >= 2 ? (
           <Line
             key={`${overlay.id}-line-${i}`}
             points={points}
             color={style.boundary}
-            lineWidth={2}
+            lineWidth={hoverEnabled && primaryHovered ? 3 : 2}
             depthTest
             renderOrder={2}
           />
@@ -297,13 +470,14 @@ function TerrainPolygon({
         <mesh
           key={`${overlay.id}-fill-${i}`}
           geometry={geometry as THREE.BufferGeometry}
-          renderOrder={1}
+          renderOrder={isIup ? 1 : 2}
         >
           <meshBasicMaterial
-            color={style.fill!}
+            color={style.fill}
             transparent
-            opacity={style.fillOpacity}
+            opacity={highlighted ? style.fillOpacity : 0}
             depthWrite={false}
+            depthTest
             side={THREE.DoubleSide}
           />
         </mesh>
@@ -315,15 +489,105 @@ function TerrainPolygon({
 function TerrainPolygons({
   dem,
   overlays,
+  hoverEnabled,
+  onHoveredLabel,
 }: {
   dem: ModelDemGrid
   overlays: ModelPolygonOverlay[]
+  hoverEnabled: boolean
+  onHoveredLabel: (label: string | null) => void
 }) {
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const step = densifyStepForDem(dem)
+
+  const ringsById = useMemo(() => {
+    const map = new Map<string, LocalVertex[][]>()
+    for (const overlay of overlays) {
+      map.set(overlay.id, overlayLocalRings(dem, overlay, step))
+    }
+    return map
+  }, [dem, overlays, step])
+
+  /** IUP id → contained non-IUP overlay ids (centroid inside any IUP ring). */
+  const childrenByIup = useMemo(() => {
+    if (!hoverEnabled) return new Map<string, string[]>()
+    const map = new Map<string, string[]>()
+    const iups = overlays.filter((o) => o.type === 'IUP')
+    const children = overlays.filter((o) => o.type !== 'IUP')
+
+    for (const iup of iups) {
+      const iupRings = ringsById.get(iup.id) ?? []
+      const contained: string[] = []
+      for (const child of children) {
+        const childRings = ringsById.get(child.id) ?? []
+        const ring = childRings[0]
+        if (!ring || ring.length === 0) continue
+        const c = localRingCentroid(ring)
+        if (!c) continue
+        const inside = iupRings.some((iupRing) =>
+          pointInLocalPolygon(c.x, c.y, iupRing),
+        )
+        if (inside) contained.push(child.id)
+      }
+      contained.sort((a, b) => {
+        const areaA = localRingArea((ringsById.get(a) ?? [])[0] ?? [])
+        const areaB = localRingArea((ringsById.get(b) ?? [])[0] ?? [])
+        return areaA - areaB
+      })
+      map.set(iup.id, contained)
+    }
+    return map
+  }, [overlays, ringsById, hoverEnabled])
+
+  const effectiveHoveredId = hoverEnabled ? hoveredId : null
+
+  const highlightedIds = useMemo(() => {
+    const ids = new Set<string>()
+    if (!effectiveHoveredId) return ids
+    ids.add(effectiveHoveredId)
+    const hovered = overlays.find((o) => o.id === effectiveHoveredId)
+    if (hovered?.type === 'IUP') {
+      for (const childId of childrenByIup.get(effectiveHoveredId) ?? []) {
+        ids.add(childId)
+      }
+    }
+    return ids
+  }, [effectiveHoveredId, overlays, childrenByIup])
+
+  useLayoutEffect(() => {
+    if (!hoverEnabled) {
+      setHoveredId(null)
+      onHoveredLabel(null)
+      return
+    }
+    if (!hoveredId) {
+      onHoveredLabel(null)
+      return
+    }
+    const hovered = overlays.find((o) => o.id === hoveredId)
+    if (!hovered) {
+      onHoveredLabel(null)
+      return
+    }
+    const name = hovered.name.trim()
+    onHoveredLabel(name || hovered.type)
+  }, [hoveredId, overlays, onHoveredLabel, hoverEnabled])
+
   if (overlays.length === 0) return null
+
   return (
     <group>
       {overlays.map((overlay) => (
-        <TerrainPolygon key={overlay.id} dem={dem} overlay={overlay} />
+        <TerrainPolygon
+          key={overlay.id}
+          dem={dem}
+          overlay={overlay}
+          localRings={ringsById.get(overlay.id) ?? []}
+          hoverEnabled={hoverEnabled}
+          highlighted={highlightedIds.has(overlay.id)}
+          primaryHovered={effectiveHoveredId === overlay.id}
+          onHover={setHoveredId}
+        />
       ))}
     </group>
   )
@@ -549,6 +813,8 @@ export function ModelTerrainScene({
   const frame = useMemo(() => frameFromDem(dem), [dem])
   const roseRef = useRef<HTMLDivElement>(null)
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
+  const [hoveredLabel, setHoveredLabel] = useState<string | null>(null)
+  const [hoverEnabled, setHoverEnabled] = useState(false)
 
   function resetView() {
     const controls = controlsRef.current
@@ -561,7 +827,7 @@ export function ModelTerrainScene({
 
   return (
     <div className="absolute inset-0">
-      <div className="pointer-events-none absolute top-3 left-3 z-10">
+      <div className="pointer-events-none absolute top-3 left-3 z-10 flex flex-wrap items-start gap-2">
         <Button
           type="button"
           size="sm"
@@ -572,6 +838,21 @@ export function ModelTerrainScene({
           <RotateCcw className="size-3.5" aria-hidden="true" />
           Reset view
         </Button>
+        <Toggle
+          size="sm"
+          variant="outline"
+          pressed={hoverEnabled}
+          onPressedChange={setHoverEnabled}
+          aria-label="Toggle polygon hover highlights"
+          className="pointer-events-auto border-white/15 bg-[#10161c]/85 text-[#e8eef2] hover:bg-[#10161c] hover:text-[#e8eef2] aria-pressed:bg-[#e8eef2]/15 aria-pressed:text-[#e8eef2]"
+        >
+          Hover
+        </Toggle>
+        {hoverEnabled && hoveredLabel ? (
+          <div className="rounded-md bg-card/95 px-2.5 py-1.5 text-xs font-medium whitespace-nowrap text-card-foreground shadow-sm ring-1 ring-foreground/10">
+            {hoveredLabel}
+          </div>
+        ) : null}
       </div>
       <CompassOverlay roseRef={roseRef} />
       <Canvas
@@ -607,7 +888,12 @@ export function ModelTerrainScene({
         />
 
         <TerrainMesh dem={dem} />
-        <TerrainPolygons dem={dem} overlays={overlays} />
+        <TerrainPolygons
+          dem={dem}
+          overlays={overlays}
+          hoverEnabled={hoverEnabled}
+          onHoveredLabel={setHoveredLabel}
+        />
         <GraduatedAxes dem={dem} labelSize={frame.labelSize} />
         <CompassDriver roseRef={roseRef} />
 

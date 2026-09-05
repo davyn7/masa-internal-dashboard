@@ -10,6 +10,8 @@ export type PolygonType = (typeof POLYGON_TYPES)[number]
 
 export type LonLat = readonly [number, number]
 
+export type LocalVertex = { x: number; y: number }
+
 export type ModelPolygonOverlay = {
   id: string
   name: string
@@ -20,17 +22,60 @@ export type ModelPolygonOverlay = {
 
 export type PolygonStyle = {
   boundary: string
-  /** null = no fill (IUP). */
-  fill: string | null
+  /** Hover fill color (outlines only until hovered). */
+  fill: string
   fillOpacity: number
 }
 
 export const POLYGON_STYLES: Record<PolygonType, PolygonStyle> = {
-  IUP: { boundary: '#ffffff', fill: null, fillOpacity: 0 },
+  IUP: { boundary: '#ffffff', fill: '#ffffff', fillOpacity: 0.25 },
   Pit: { boundary: '#ff1a1a', fill: '#ff1a1a', fillOpacity: 0.5 },
   Disposal: { boundary: '#f5e000', fill: '#f5e000', fillOpacity: 0.5 },
   Stockpile: { boundary: '#ff8c00', fill: '#ff8c00', fillOpacity: 0.5 },
   Road: { boundary: '#00e5ff', fill: '#00e5ff', fillOpacity: 0.5 },
+}
+
+/** Ray-crossing point-in-polygon test in local XY (meters). */
+export function pointInLocalPolygon(
+  x: number,
+  y: number,
+  vertices: readonly LocalVertex[],
+): boolean {
+  let inside = false
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const xi = vertices[i].x
+    const yi = vertices[i].y
+    const xj = vertices[j].x
+    const yj = vertices[j].y
+    const intersect =
+      yi > y !== yj > y &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi + Number.EPSILON) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+/** Absolute shoelace area of a closed ring in local XY (meters²). */
+export function localRingArea(vertices: readonly LocalVertex[]): number {
+  if (vertices.length < 3) return 0
+  let sum = 0
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    sum += vertices[j].x * vertices[i].y - vertices[i].x * vertices[j].y
+  }
+  return Math.abs(sum) * 0.5
+}
+
+export function localRingCentroid(
+  vertices: readonly LocalVertex[],
+): LocalVertex | null {
+  if (vertices.length === 0) return null
+  let sx = 0
+  let sy = 0
+  for (const v of vertices) {
+    sx += v.x
+    sy += v.y
+  }
+  return { x: sx / vertices.length, y: sy / vertices.length }
 }
 
 export function isPolygonType(value: string): value is PolygonType {
@@ -181,8 +226,6 @@ export async function parseGeoJsonFile(file: File): Promise<LonLat[][]> {
 
   return rings
 }
-
-export type LocalVertex = { x: number; y: number }
 
 /** Densify a closed ring in local meters so draped edges follow terrain. */
 export function densifyLocalRing(
